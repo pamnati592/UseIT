@@ -100,9 +100,27 @@ Replace the current separate "🚫 Blocked dates" button with a single **"Manage
 - Toggle on item upload: "Also available for purchase" + sale price
 - "Buy" button appears on swipe action panel + Item Detail only if for sale
 
-### E. Feed algorithm based on interests + distance
-- Supabase RPC `get_feed(user_id, lat, lng)` ranking items by user interests + PostGIS distance
-- Show distance badge on swipe cards ("2.3 km away")
+### E. Lender score penalty for cancellations
+When a lender cancels a rental, their lender reputation score should take a hit. This discourages abuse (accepting many requests and then cancelling at 49h to game availability).
+
+**Suggested approach:**
+- Add a `lender_cancellations` integer counter on the `profiles` table
+- On each lender-initiated cancellation, increment the counter and deduct from `lender_score`
+- Show a warning badge on the lender's public profile if cancellations > threshold (e.g. 3)
+- Admins can reset the counter after reviewing a dispute
+
+### F. Feed ranking algorithm based on reputation + distance
+Currently the home feed returns items in `created_at` order. A proper ranking should factor in:
+- **Lender score** — higher-reputation lenders rank higher
+- **Distance** — closer items rank higher (requires PostGIS location on items + user's current GPS)
+- **Interest match** — items matching the user's selected categories rank higher
+- **Recency** — newer listings get a small boost
+
+**Suggested implementation:**
+- Supabase RPC `get_feed(user_id, lat, lng)` that returns a ranked list using a weighted formula
+- Add `location GEOGRAPHY(Point)` column to `items` (set at upload time)
+- Add distance badge on swipe cards ("2.3 km away")
+- Requires GPS location permission on the AddItem and HomeScreen flows
 
 ### F. Profile redesign — Account Hub + Public Profile
 - Profile Tab = private account hub (My Items, My Rentals, Wishlist, Settings)
