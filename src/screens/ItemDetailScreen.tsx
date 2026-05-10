@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, Image, FlatList, TouchableOpacity,
   ScrollView, Dimensions, StatusBar, Alert, ActivityIndicator, Modal,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Calendar } from 'react-native-calendars';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { HomeStackParamList } from '../navigation/HomeStackNavigator';
@@ -73,6 +73,7 @@ function buildMarkedDates(
 
 export default function ItemDetailScreen({ navigation, route }: Props) {
   const { item, openRent, prefilledStart, prefilledEnd } = route.params;
+  const insets = useSafeAreaInsets();
   const photos = item.photos?.filter(Boolean) ?? [];
   const [activeIndex, setActiveIndex] = useState(0);
   const [chatLoading, setChatLoading] = useState(false);
@@ -375,7 +376,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
         animationType="slide"
         onRequestClose={() => setRentModalVisible(false)}
       >
-        <SafeAreaView style={styles.modalContainer}>
+        <View style={[styles.modalContainer, { paddingTop: insets.top }]}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Choose rental dates</Text>
             <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setRentModalVisible(false)}>
@@ -436,7 +437,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
           <TouchableOpacity style={styles.cancelBtn} onPress={() => setRentModalVisible(false)}>
             <Text style={styles.cancelBtnText}>Cancel</Text>
           </TouchableOpacity>
-        </SafeAreaView>
+        </View>
       </Modal>
     </>
   );
