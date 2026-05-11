@@ -195,7 +195,16 @@ export default function HomeScreen({ navigation }: Props) {
               <Text style={styles.sheetButtonText}>🛒 Purchase</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.sheetButton} onPress={() => setActionPanel(false)}>
+            <TouchableOpacity
+              style={styles.sheetButton}
+              onPress={async () => {
+                setActionPanel(false);
+                if (!selectedItem) return;
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+                await supabase.from('wishlist').upsert({ user_id: user.id, item_id: selectedItem.id });
+              }}
+            >
               <Text style={styles.sheetButtonText}>❤️ Add to Wishlist</Text>
             </TouchableOpacity>
 

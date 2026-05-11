@@ -9,7 +9,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { supabase } from '../services/supabase';
 
-type RentedRange = { id: string; start: string; end: string; renterName: string; status: string; conversationId: string | null };
+// Single type for all rental states
+type RentalRange = { id: string; start: string; end: string; renterName: string; status: string; conversationId: string | null };
 type BlockedRange = { id: string; blocked_from: string; blocked_to: string };
 
 type Props = NativeStackScreenProps<ProfileStackParamList, 'ManageItem'>;
@@ -17,13 +18,20 @@ type Props = NativeStackScreenProps<ProfileStackParamList, 'ManageItem'>;
 const TODAY = new Date().toISOString().split('T')[0];
 
 const STATUS_LABEL: Record<string, string> = {
-  approved: 'Booked', active: 'Active',
+  pending:  'Pending',
+  approved: 'Approved',
+  active:   'Paid',
 };
 
-const HOURS_48 = 48 * 60 * 60 * 1000;
+const PENDING_COLOR  = { bg: '#3a2a00', text: '#f0a500' };
+const APPROVED_COLOR = { bg: '#0a1a4a', text: '#4da6ff' };
+const PAID_COLOR     = { bg: '#0a2a1a', text: '#4cd964' };
+const BLOCKED_COLOR  = { bg: '#3a0a0a', text: '#f44336' };
 
-function canCancel(startDate: string): boolean {
-  return new Date(startDate).getTime() - Date.now() > HOURS_48;
+function statusColor(status: string) {
+  if (status === 'approved') return APPROVED_COLOR;
+  if (status === 'active')   return PAID_COLOR;
+  return PENDING_COLOR;
 }
 
 function fmt(iso: string): string {
@@ -42,32 +50,30 @@ function expandRange(from: string, to: string): string[] {
 }
 
 function buildCalendarMarks(
-  rentedRanges: RentedRange[],
+  rentalRanges: RentalRange[],
   blockedRanges: BlockedRange[],
   selStart: string | null,
   selEnd: string | null,
 ): Record<string, any> {
   const marks: Record<string, any> = {};
 
-  rentedRanges.forEach(r => {
-    const days = expandRange(r.start, r.end);
-    days.forEach((d, i) => {
-      marks[d] = { color: '#5a0a0a', textColor: '#ff8080', startingDay: i === 0, endingDay: i === days.length - 1 };
+  rentalRanges.forEach(r => {
+    const c = statusColor(r.status);
+    expandRange(r.start, r.end).forEach((d, i, arr) => {
+      marks[d] = { color: c.bg, textColor: c.text, startingDay: i === 0, endingDay: i === arr.length - 1 };
     });
   });
 
   blockedRanges.forEach(r => {
-    const days = expandRange(r.blocked_from, r.blocked_to);
-    days.forEach((d, i) => {
-      marks[d] = { color: '#5a3200', textColor: '#ffaa55', startingDay: i === 0, endingDay: i === days.length - 1 };
+    expandRange(r.blocked_from, r.blocked_to).forEach((d, i, arr) => {
+      marks[d] = { color: BLOCKED_COLOR.bg, textColor: BLOCKED_COLOR.text, startingDay: i === 0, endingDay: i === arr.length - 1 };
     });
   });
 
   if (selStart) {
     const end = selEnd ?? selStart;
-    const days = expandRange(selStart, end);
-    days.forEach((d, i) => {
-      marks[d] = { color: '#fff', textColor: '#000', startingDay: i === 0, endingDay: i === days.length - 1 };
+    expandRange(selStart, end).forEach((d, i, arr) => {
+      marks[d] = { color: '#fff', textColor: '#000', startingDay: i === 0, endingDay: i === arr.length - 1 };
     });
   }
 
@@ -77,12 +83,12 @@ function buildCalendarMarks(
 export default function ManageItemScreen({ navigation, route }: Props) {
   const { itemId, itemTitle } = route.params;
 
-  const [rentedRanges, setRentedRanges] = useState<RentedRange[]>([]);
+  const [rentalRanges,  setRentalRanges]  = useState<RentalRange[]>([]);
   const [blockedRanges, setBlockedRanges] = useState<BlockedRange[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading,  setLoading]  = useState(true);
   const [selStart, setSelStart] = useState<string | null>(null);
-  const [selEnd, setSelEnd] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [selEnd,   setSelEnd]   = useState<string | null>(null);
+  const [saving,   setSaving]   = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
@@ -93,7 +99,7 @@ export default function ManageItemScreen({ navigation, route }: Props) {
         .from('transactions')
         .select('id, start_date, end_date, status, conversation_id, renter:profiles!transactions_renter_id_fkey(full_name)')
         .eq('item_id', itemId)
-        .in('status', ['approved', 'active'])
+        .in('status', ['pending', 'approved', 'active'])
         .order('start_date'),
       supabase
         .from('item_blocked_dates')
@@ -102,7 +108,7 @@ export default function ManageItemScreen({ navigation, route }: Props) {
         .order('blocked_from'),
     ]);
 
-    setRentedRanges(
+    setRentalRanges(
       (txRes.data ?? []).map((t: any) => ({
         id: t.id,
         start: t.start_date.split('T')[0],
@@ -116,11 +122,11 @@ export default function ManageItemScreen({ navigation, route }: Props) {
     setLoading(false);
   }
 
-  const rentedDatesSet = useMemo(() => {
+  const reservedDatesSet = useMemo(() => {
     const s = new Set<string>();
-    rentedRanges.forEach(r => expandRange(r.start, r.end).forEach(d => s.add(d)));
+    rentalRanges.forEach(r => expandRange(r.start, r.end).forEach(d => s.add(d)));
     return s;
-  }, [rentedRanges]);
+  }, [rentalRanges]);
 
   const blockedDateToRangeId = useMemo(() => {
     const map: Record<string, string> = {};
@@ -130,9 +136,23 @@ export default function ManageItemScreen({ navigation, route }: Props) {
     return map;
   }, [blockedRanges]);
 
+  function navigateToChat(r: RentalRange) {
+    if (!r.conversationId) return;
+    (navigation as any).getParent()?.navigate('Chats', {
+      screen: 'ChatRoom',
+      params: {
+        conversationId: r.conversationId,
+        itemTitle,
+        otherUserName: r.renterName,
+        initialTab: 'rental',
+        targetTransactionId: r.id,
+      },
+    });
+  }
+
   function onDayPress(day: { dateString: string }) {
     const d = day.dateString;
-    if (rentedDatesSet.has(d)) return;
+    if (reservedDatesSet.has(d)) return;
 
     const blockedRangeId = blockedDateToRangeId[d];
     if (blockedRangeId) {
@@ -155,8 +175,8 @@ export default function ManageItemScreen({ navigation, route }: Props) {
       setSelStart(d); setSelEnd(null);
     } else {
       const range = expandRange(selStart, d);
-      if (range.some(rd => rentedDatesSet.has(rd) || blockedDateToRangeId[rd])) {
-        Alert.alert('Invalid range', 'Selection overlaps with rented or already blocked dates.');
+      if (range.some(rd => reservedDatesSet.has(rd) || blockedDateToRangeId[rd])) {
+        Alert.alert('Invalid range', 'Selection overlaps with reserved or blocked dates.');
         return;
       }
       setSelEnd(d);
@@ -186,49 +206,9 @@ export default function ManageItemScreen({ navigation, route }: Props) {
     if (!error) setBlockedRanges(prev => prev.filter(r => r.id !== id));
   }
 
-  function confirmCancelRental(rental: RentedRange) {
-    const isPaid = rental.status === 'active';
-    Alert.alert(
-      'Cancel this rental?',
-      isPaid
-        ? `${rental.renterName}'s booking (${fmt(rental.start)} → ${fmt(rental.end)}) will be cancelled and they will receive a full refund.`
-        : `${rental.renterName}'s booking (${fmt(rental.start)} → ${fmt(rental.end)}) will be cancelled. No payment has been taken yet.`,
-      [
-        { text: 'Keep booking', style: 'cancel' },
-        { text: 'Cancel rental', style: 'destructive', onPress: () => doCancel(rental) },
-      ]
-    );
-  }
-
-  async function doCancel(rental: RentedRange) {
-    const isPaid = rental.status === 'active';
-    const { error } = await supabase
-      .from('transactions')
-      .update({ status: 'cancelled' })
-      .eq('id', rental.id);
-
-    if (error) { Alert.alert('Error', error.message); return; }
-
-    if (rental.conversationId) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const msg = isPaid
-          ? `⚠️ Your rental (${fmt(rental.start)} → ${fmt(rental.end)}) has been cancelled by the lender. You will receive a full refund.`
-          : `⚠️ Your booking request (${fmt(rental.start)} → ${fmt(rental.end)}) has been cancelled by the lender. No payment was taken.`;
-        await supabase.from('messages').insert({
-          conversation_id: rental.conversationId,
-          sender_id: user.id,
-          content: msg,
-        });
-      }
-    }
-
-    setRentedRanges(prev => prev.filter(r => r.id !== rental.id));
-  }
-
-  const markedDates = buildCalendarMarks(rentedRanges, blockedRanges, selStart, selEnd);
+  const markedDates = buildCalendarMarks(rentalRanges, blockedRanges, selStart, selEnd);
   const selectionHint = !selStart
-    ? 'Tap a date to start blocking'
+    ? 'Tap a free date to start blocking'
     : !selEnd
     ? `From ${fmt(selStart)} — tap end date`
     : `${fmt(selStart)} → ${fmt(selEnd)}`;
@@ -249,16 +229,20 @@ export default function ManageItemScreen({ navigation, route }: Props) {
         <ActivityIndicator color="#fff" style={{ flex: 1 }} />
       ) : (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+
           {/* Legend */}
           <View style={styles.legend}>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: '#ff8080' }]} />
-              <Text style={styles.legendLabel}>Rented (read-only)</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: '#ffaa55' }]} />
-              <Text style={styles.legendLabel}>Blocked (tap to remove)</Text>
-            </View>
+            {[
+              { color: PENDING_COLOR.text,  label: 'Pending' },
+              { color: APPROVED_COLOR.text, label: 'Approved' },
+              { color: PAID_COLOR.text,     label: 'Paid' },
+              { color: BLOCKED_COLOR.text,  label: 'Blocked' },
+            ].map(({ color, label }) => (
+              <View key={label} style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: color }]} />
+                <Text style={styles.legendLabel}>{label}</Text>
+              </View>
+            ))}
           </View>
 
           <Calendar
@@ -279,7 +263,7 @@ export default function ManageItemScreen({ navigation, route }: Props) {
             }}
           />
 
-          {/* Add blocked range */}
+          {/* Block dates */}
           <View style={styles.addSection}>
             <Text style={styles.addHint}>{selectionHint}</Text>
             <TouchableOpacity
@@ -299,14 +283,14 @@ export default function ManageItemScreen({ navigation, route }: Props) {
             )}
           </View>
 
-          {/* Blocked ranges list */}
+          {/* Blocked periods */}
           {blockedRanges.length > 0 && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Blocked periods</Text>
+              <Text style={styles.sectionTitle}>Blocked Periods</Text>
               {blockedRanges.map(r => (
                 <View key={r.id} style={styles.rangeRow}>
-                  <View style={[styles.rangeColorBar, { backgroundColor: '#ffaa55' }]} />
-                  <Text style={styles.rangeText}>{fmt(r.blocked_from)} → {fmt(r.blocked_to)}</Text>
+                  <View style={[styles.rangeColorBar, { backgroundColor: BLOCKED_COLOR.text }]} />
+                  <Text style={[styles.rangeText, { flex: 1 }]}>{fmt(r.blocked_from)} → {fmt(r.blocked_to)}</Text>
                   <TouchableOpacity style={styles.deleteBtn} onPress={() => deleteRange(r.id)}>
                     <Text style={styles.deleteBtnText}>✕</Text>
                   </TouchableOpacity>
@@ -315,38 +299,37 @@ export default function ManageItemScreen({ navigation, route }: Props) {
             </View>
           )}
 
-          {/* Rented ranges list */}
-          {rentedRanges.length > 0 && (
+          {/* All rentals — read-only overview, tap to open chat */}
+          {rentalRanges.length > 0 && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Upcoming rentals</Text>
-              {rentedRanges.map((r) => {
-                const cancellable = r.status === 'approved' && canCancel(r.start);
+              <Text style={styles.sectionTitle}>Rentals</Text>
+              {rentalRanges.map(r => {
+                const c = statusColor(r.status);
                 return (
-                  <View key={r.id} style={styles.rangeRow}>
-                    <View style={[styles.rangeColorBar, { backgroundColor: '#ff8080' }]} />
+                  <TouchableOpacity
+                    key={r.id}
+                    style={styles.rangeRow}
+                    disabled={!r.conversationId}
+                    onPress={() => navigateToChat(r)}
+                  >
+                    <View style={[styles.rangeColorBar, { backgroundColor: c.text }]} />
                     <View style={styles.rangeInfo}>
                       <Text style={styles.rangeText}>{fmt(r.start)} → {fmt(r.end)}</Text>
                       <Text style={styles.rangeRenter}>{r.renterName}</Text>
                     </View>
-                    <Text style={[styles.rangeStatus, r.status === 'active' ? styles.rangeStatusActive : styles.rangeStatusBooked]}>
-                      {STATUS_LABEL[r.status] ?? r.status}
-                    </Text>
-                    {cancellable && (
-                      <TouchableOpacity style={styles.cancelBtn} onPress={() => confirmCancelRental(r)}>
-                        <Text style={styles.cancelBtnText}>Cancel</Text>
-                      </TouchableOpacity>
-                    )}
-                    {r.status === 'approved' && !canCancel(r.start) && (
-                      <Text style={styles.cancelLocked}>🔒</Text>
-                    )}
-                  </View>
+                    <View style={[styles.statusBadge, { backgroundColor: c.bg, borderColor: c.text }]}>
+                      <Text style={[styles.statusBadgeText, { color: c.text }]}>
+                        {STATUS_LABEL[r.status] ?? r.status}
+                      </Text>
+                    </View>
+                    {r.conversationId && <Text style={styles.chevron}>›</Text>}
+                  </TouchableOpacity>
                 );
               })}
-              <Text style={styles.cancelNote}>
-                Cancellation locked within 48h of rental start. Full refund always issued to renter.
-              </Text>
+              <Text style={styles.chatNote}>Tap a rental to manage it in the conversation.</Text>
             </View>
           )}
+
         </ScrollView>
       )}
     </SafeAreaView>
@@ -368,10 +351,10 @@ const styles = StyleSheet.create({
 
   scroll: { padding: 16, paddingBottom: 40 },
 
-  legend: { flexDirection: 'row', gap: 20, marginBottom: 12 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  legendDot: { width: 10, height: 10, borderRadius: 5 },
-  legendLabel: { color: '#888', fontSize: 12 },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 12 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  legendDot: { width: 9, height: 9, borderRadius: 5 },
+  legendLabel: { color: '#888', fontSize: 11 },
 
   addSection: { marginTop: 16, alignItems: 'center', gap: 10 },
   addHint: { color: '#888', fontSize: 13 },
@@ -384,7 +367,10 @@ const styles = StyleSheet.create({
   clearSelText: { color: '#555', fontSize: 13 },
 
   section: { marginTop: 24 },
-  sectionTitle: { fontSize: 11, color: '#555', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 },
+  sectionTitle: {
+    fontSize: 11, color: '#555', fontWeight: '600',
+    textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10,
+  },
   rangeRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: '#242424', borderRadius: 10,
@@ -395,16 +381,14 @@ const styles = StyleSheet.create({
   rangeInfo: { flex: 1 },
   rangeText: { color: '#ccc', fontSize: 14 },
   rangeRenter: { color: '#666', fontSize: 12, marginTop: 2 },
-  rangeStatus: { fontSize: 11, fontWeight: '700', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  rangeStatusActive: { backgroundColor: '#0a2a0a', color: '#4cd964' },
-  rangeStatusBooked: { backgroundColor: '#0a1a2a', color: '#4da6ff' },
-  cancelBtn: {
-    marginLeft: 8, paddingHorizontal: 10, paddingVertical: 5,
-    backgroundColor: '#3a0a0a', borderRadius: 8, borderWidth: 1, borderColor: '#f44336',
+  statusBadge: {
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 8, borderWidth: 1,
   },
-  cancelBtnText: { color: '#f44336', fontSize: 12, fontWeight: '700' },
-  cancelLocked: { marginLeft: 8, fontSize: 14 },
-  cancelNote: { color: '#444', fontSize: 11, marginTop: 8, lineHeight: 16 },
+  statusBadgeText: { fontSize: 11, fontWeight: '700' },
+  chevron: { fontSize: 18, color: '#555', fontWeight: '300' },
+  chatNote: { color: '#444', fontSize: 11, marginTop: 6, lineHeight: 16 },
+
   deleteBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   deleteBtnText: { color: '#f44336', fontSize: 14, fontWeight: '600' },
 });

@@ -33,6 +33,25 @@ https://www.figma.com/make/RbE6DxiKS51wtRikFVI4kN/Marketplace-App-Wireframes
 
 ---
 
+## App Design Vocabulary
+
+These named patterns must be respected in every feature built.
+
+### Single Action Source (SAS)
+Every action in the app has **one canonical screen** where it executes. All other entry points are navigation shortcuts that route to that screen — they never duplicate the action logic.
+
+- **Example:** Approve / Decline / Cancel a rental → always happens inside `ChatRoomScreen` (Rental tab). `ManageItemScreen`, `MyRentalsScreen`, and any future screen that shows a transaction status never implement their own action buttons — they navigate to the chat instead.
+- **Rule:** Before adding a button that performs an action, ask: "Is there already a canonical screen for this action?" If yes, navigate there. Never copy the logic.
+- **Why:** Prevents divergence — if the flow changes (e.g. a new confirmation step), it only needs updating in one place.
+
+### Badge Jump
+The UX flow triggered when a user taps an unread badge: the app auto-navigates to the correct tab, scrolls to the relevant message, and flashes it with a blue glow for 1.2 seconds.
+
+- **Entry points:** Chats tab badge, conversation green dot, any `highlightAfterTimestamp` + `targetTransactionId` param passed to `ChatRoomScreen`.
+- **Rule:** Any new notification or status-change that the user needs to act on must be wired into the Badge Jump flow — never just open the Chats tab root.
+
+---
+
 ## Role
 You are a Senior Product Manager and Full-Stack Software Architect with expertise in P2P Marketplaces and mobile applications.
 

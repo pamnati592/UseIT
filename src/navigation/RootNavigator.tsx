@@ -54,7 +54,7 @@ export default function RootNavigator() {
 
   return (
     <SafeAreaProvider>
-      <NavigationContainer>
+      <NavigationContainer key={session?.user?.id ?? 'logged-out'}>
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           {!session ? (
             <Stack.Screen name="Login" component={LoginScreen} />

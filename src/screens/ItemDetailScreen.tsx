@@ -79,6 +79,9 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
   const [chatLoading, setChatLoading] = useState(false);
   const [ownerName, setOwnerName] = useState<string | null>(null);
   const [ownerCity, setOwnerCity] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [wishlisted, setWishlisted] = useState(false);
+  const [wishlistLoading, setWishlistLoading] = useState(false);
 
   const [rentModalVisible, setRentModalVisible] = useState(!!(prefilledStart || openRent));
 
@@ -95,11 +98,36 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
           setOwnerCity((data as any).city ?? null);
         }
       });
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      setCurrentUserId(user.id);
+      supabase
+        .from('wishlist')
+        .select('item_id')
+        .eq('user_id', user.id)
+        .eq('item_id', item.id)
+        .maybeSingle()
+        .then(({ data }) => setWishlisted(!!data));
+    });
   }, []);
   const [selectedStart, setSelectedStart] = useState<string | null>(prefilledStart ?? null);
   const [selectedEnd, setSelectedEnd] = useState<string | null>(prefilledEnd ?? null);
   const [blockedDates, setBlockedDates] = useState<Set<string>>(new Set());
   const [rentLoading, setRentLoading] = useState(false);
+
+  async function toggleWishlist() {
+    setWishlistLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setWishlistLoading(false); return; }
+    if (wishlisted) {
+      await supabase.from('wishlist').delete().eq('user_id', user.id).eq('item_id', item.id);
+      setWishlisted(false);
+    } else {
+      await supabase.from('wishlist').upsert({ user_id: user.id, item_id: item.id });
+      setWishlisted(true);
+    }
+    setWishlistLoading(false);
+  }
 
   async function openRentModal() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -305,7 +333,14 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
             {ownerName && (
               <TouchableOpacity
                 style={styles.ownerRow}
-                onPress={() => navigation.navigate('PublicProfile', { userId: item.owner_id, userName: ownerName })}
+                onPress={() => {
+                  if (item.owner_id === currentUserId) {
+                    // Owner viewing their own item — go to their profile hub (SAS)
+                    (navigation as any).getParent()?.navigate('Profile', { screen: 'ProfileMain' });
+                  } else {
+                    (navigation as any).navigate('PublicProfile', { userId: item.owner_id, userName: ownerName });
+                  }
+                }}
               >
                 <View style={styles.ownerAvatar}>
                   <Text style={styles.ownerInitial}>{ownerName.charAt(0).toUpperCase()}</Text>
@@ -356,14 +391,13 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
               )}
 
               <TouchableOpacity
-                style={[styles.actionBtn, styles.actionBtnSecondary]}
-                onPress={() => {
-                  (navigation as any).getParent()?.navigate('AIPlanner', {
-                    plannerUpdate: { itemId: item.id, type: 'saved' },
-                  });
-                }}
+                style={[styles.actionBtn, styles.actionBtnSecondary, wishlisted && styles.actionBtnWishlisted]}
+                onPress={toggleWishlist}
+                disabled={wishlistLoading}
               >
-                <Text style={styles.actionBtnTextSecondary}>❤️ Wishlist</Text>
+                <Text style={styles.actionBtnTextSecondary}>
+                  {wishlisted ? '❤️ Saved' : '🤍 Wishlist'}
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -517,6 +551,7 @@ const styles = StyleSheet.create({
   },
   actionBtnTextSecondary: { color: '#fff', fontSize: 16, fontWeight: '500' },
   actionBtnDisabled: { opacity: 0.5 },
+  actionBtnWishlisted: { borderColor: '#e57373', backgroundColor: '#2a1a1a' },
 
   // Modal
   modalContainer: { flex: 1, backgroundColor: '#1a1a1a' },

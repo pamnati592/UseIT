@@ -19,10 +19,15 @@ type Booking = {
 
 type ItemRow = {
   id: string;
+  owner_id: string;
   title: string;
   category: string;
-  verification_status: string;
+  description: string | null;
   daily_price: number;
+  sale_price: number | null;
+  city: string | null;
+  photos: string[] | null;
+  verification_status: string;
   is_hidden: boolean;
   bookings: Booking[];
 };
@@ -62,7 +67,7 @@ export default function MyItemsScreen({ navigation }: Props) {
     const [itemsRes, txRes] = await Promise.all([
       supabase
         .from('items')
-        .select('id, title, category, verification_status, daily_price, is_hidden')
+        .select('id, owner_id, title, category, description, daily_price, sale_price, city, photos, verification_status, is_hidden')
         .eq('owner_id', user.id)
         .order('created_at', { ascending: false }),
       supabase
@@ -91,22 +96,15 @@ export default function MyItemsScreen({ navigation }: Props) {
     setItems(
       (itemsRes.data as any[]).map(item => ({
         ...item,
+        description: item.description ?? null,
+        sale_price: item.sale_price ?? null,
+        city: item.city ?? null,
+        photos: item.photos ?? null,
         is_hidden: item.is_hidden ?? false,
         bookings: txByItem[item.id] ?? [],
       }))
     );
     setLoading(false);
-  }
-
-  function itemAvailability(item: ItemRow): { label: string; color: string } {
-    if (item.is_hidden) return { label: 'Hidden', color: '#666' };
-    const active = item.bookings.find(b => b.status === 'active');
-    if (active) return { label: 'Rented', color: '#4cd964' };
-    const approved = item.bookings.find(b => b.status === 'approved');
-    if (approved) return { label: 'Booked', color: '#4da6ff' };
-    const pending = item.bookings.find(b => b.status === 'pending');
-    if (pending) return { label: `${item.bookings.filter(b => b.status === 'pending').length} pending`, color: '#f0a500' };
-    return { label: 'Available', color: '#4cd964' };
   }
 
   async function toggleHidden(item: ItemRow) {
@@ -141,19 +139,30 @@ export default function MyItemsScreen({ navigation }: Props) {
           keyExtractor={i => i.id}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => {
-            const avail = itemAvailability(item);
             return (
               <View style={[styles.card, item.is_hidden && styles.cardHidden]}>
-                <View style={styles.cardHeader}>
+                <TouchableOpacity
+                  style={styles.cardHeader}
+                  activeOpacity={0.7}
+                  onPress={() => navigation.navigate('ItemDetail', { item: {
+                    id: item.id,
+                    owner_id: item.owner_id,
+                    title: item.title,
+                    category: item.category,
+                    description: item.description,
+                    daily_price: item.daily_price,
+                    sale_price: item.sale_price,
+                    city: item.city,
+                    photos: item.photos,
+                  }})}
+                >
                   <Text style={styles.emoji}>{CATEGORY_EMOJI[item.category] ?? '📦'}</Text>
                   <View style={styles.cardMeta}>
                     <Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text>
                     <Text style={styles.itemPrice}>₪{item.daily_price}/day</Text>
                   </View>
-                  <View style={[styles.availBadge, { backgroundColor: avail.color + '22', borderColor: avail.color }]}>
-                    <Text style={[styles.availText, { color: avail.color }]}>{avail.label}</Text>
-                  </View>
-                </View>
+                  <Text style={styles.cardChevron}>›</Text>
+                </TouchableOpacity>
 
                 {/* Action row */}
                 <View style={styles.actionRow}>
@@ -164,47 +173,19 @@ export default function MyItemsScreen({ navigation }: Props) {
                     <Text style={styles.actionBtnText}>📅 Manage</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
+                    style={styles.actionBtn}
+                    onPress={() => navigation.navigate('EditItem', { itemId: item.id })}
+                  >
+                    <Text style={styles.actionBtnText}>✏️ Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
                     style={[styles.actionBtn, item.is_hidden && styles.actionBtnActive]}
                     onPress={() => toggleHidden(item)}
                   >
-                    <Text style={styles.actionBtnText}>{item.is_hidden ? '👁 Show item' : '🙈 Hide item'}</Text>
+                    <Text style={styles.actionBtnText}>{item.is_hidden ? '👁 Show' : '🙈 Hide'}</Text>
                   </TouchableOpacity>
                 </View>
 
-                {item.bookings.length > 0 && (
-                  <View style={styles.bookingsSection}>
-                    <Text style={styles.bookingsSectionTitle}>Upcoming bookings</Text>
-                    {item.bookings.map(b => (
-                      <TouchableOpacity
-                        key={b.id}
-                        style={styles.bookingRow}
-                        disabled={!b.conversation_id}
-                        onPress={() => {
-                          if (!b.conversation_id) return;
-                          (navigation as any).getParent()?.navigate('Chats', {
-                            screen: 'ChatRoom',
-                            params: {
-                              conversationId: b.conversation_id,
-                              itemTitle: item.title,
-                              otherUserName: b.renter_name,
-                              targetTransactionId: b.id,
-                            },
-                          });
-                        }}
-                      >
-                        <View style={[styles.statusDot, { backgroundColor: STATUS_COLORS[b.status] ?? '#666' }]} />
-                        <Text style={styles.bookingDates}>{fmt(b.start_date)} → {fmt(b.end_date)}</Text>
-                        <Text style={styles.bookingRenter} numberOfLines={1}>{b.renter_name}</Text>
-                        <View style={styles.bookingRight}>
-                          <Text style={[styles.bookingStatus, { color: STATUS_COLORS[b.status] ?? '#666' }]}>
-                            {STATUS_LABELS[b.status] ?? b.status}
-                          </Text>
-                          {b.conversation_id && <Text style={styles.bookingChevron}>›</Text>}
-                        </View>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
               </View>
             );
           }}
@@ -239,6 +220,7 @@ const styles = StyleSheet.create({
   cardMeta: { flex: 1 },
   itemTitle: { fontSize: 16, fontWeight: '600', color: '#fff' },
   itemPrice: { fontSize: 13, color: '#888', marginTop: 2 },
+  cardChevron: { fontSize: 22, color: '#444', fontWeight: '300' },
   availBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, borderWidth: 1 },
   availText: { fontSize: 12, fontWeight: '600' },
 

@@ -125,13 +125,19 @@ export default function ChatsScreen({ navigation }: Props) {
             return (
               <TouchableOpacity
                 style={styles.row}
-                onPress={() =>
+                onPress={() => {
+                  const myLastRead = conv.renter_id === currentUserId
+                    ? conv.renter_last_read_at
+                    : conv.lender_last_read_at;
                   navigation.navigate('ChatRoom', {
                     conversationId: conv.id,
                     itemTitle: conv.item_title,
                     otherUserName: name,
-                  })
-                }
+                    // Pass a fallback epoch timestamp when myLastRead is null (never opened this chat)
+                    // so Badge Jump still fires and highlights the first unseen message.
+                    ...(unread ? { highlightAfterTimestamp: myLastRead ?? new Date(0).toISOString() } : {}),
+                  });
+                }}
               >
                 <View style={styles.avatar}>
                   <Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text>

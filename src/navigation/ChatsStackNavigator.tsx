@@ -4,7 +4,7 @@ import ChatRoomScreen from '../screens/ChatRoomScreen';
 
 export type ChatsStackParamList = {
   ConversationsList: undefined;
-  ChatRoom: { conversationId: string; itemTitle: string; otherUserName: string; initialText?: string; targetTransactionId?: string };
+  ChatRoom: { conversationId: string; itemTitle: string; otherUserName: string; initialText?: string; targetTransactionId?: string; initialTab?: 'chat' | 'rental'; highlightAfterTimestamp?: string };
 };
 
 const Stack = createNativeStackNavigator<ChatsStackParamList>();

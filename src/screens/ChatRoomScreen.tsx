@@ -30,6 +30,7 @@ type Transaction = {
 type ConversationInfo = {
   lender_id: string;
   renter_id: string;
+  item_id: string;
 };
 
 const RENTAL_REQUEST_PREFIX = '📅 Rental request:';
@@ -37,7 +38,9 @@ const RENTAL_REQUEST_PREFIX = '📅 Rental request:';
 type Props = NativeStackScreenProps<ChatsStackParamList, 'ChatRoom'>;
 
 export default function ChatRoomScreen({ navigation, route }: Props) {
-  const { conversationId, itemTitle, otherUserName, initialText, targetTransactionId } = route.params;
+  const { conversationId, itemTitle, otherUserName, initialText, targetTransactionId, initialTab, highlightAfterTimestamp } = route.params;
+  const [activeTab, setActiveTab] = useState<'chat' | 'rental'>(initialTab ?? 'chat');
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState(initialText ?? '');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -67,7 +70,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
           .order('created_at', { ascending: false }),
         supabase
           .from('conversations')
-          .select('lender_id, renter_id')
+          .select('lender_id, renter_id, item_id')
           .eq('id', conversationId)
           .single(),
         supabase
@@ -111,7 +114,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
           async (payload) => {
             if (!mounted) return;
             const newMsg = payload.new as Message;
-            setMessages((prev) => [newMsg, ...prev]);
+            setMessages((prev) => prev.some(m => m.id === newMsg.id) ? prev : [newMsg, ...prev]);
             if (newMsg.transaction_id) {
               const { data: tx } = await supabase
                 .from('transactions')
@@ -135,19 +138,36 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   // After messages + transactions load, scroll to the target rental request card
   useEffect(() => {
     if (loading || !targetTransactionId || messages.length === 0) return;
+    const rentalMsgs = messages.filter(m => !!m.transaction_id);
     const tx = transactions[targetTransactionId];
-    let idx = messages.findIndex(m => m.transaction_id === targetTransactionId);
+    let idx = rentalMsgs.findIndex(m => m.transaction_id === targetTransactionId);
     if (idx < 0 && tx) {
       const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
       const d = new Date(tx.start_date);
       const token = `${d.getUTCDate()} ${monthNames[d.getUTCMonth()]}`;
-      idx = messages.findIndex(m => m.content.startsWith(RENTAL_REQUEST_PREFIX) && m.content.includes(token));
+      idx = rentalMsgs.findIndex(m => m.content.startsWith(RENTAL_REQUEST_PREFIX) && m.content.includes(token));
     }
     if (idx >= 0) {
+      const msgId = rentalMsgs[idx].id;
       setTimeout(() => {
         flatListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.4 });
+        setHighlightedMessageId(msgId);
+        setTimeout(() => setHighlightedMessageId(null), 1200);
       }, 350);
     }
+  }, [loading]);
+
+  // When arriving from a badged conversation, highlight the newest unread message and switch tab if needed
+  useEffect(() => {
+    if (loading || !highlightAfterTimestamp || messages.length === 0) return;
+    const ts = new Date(highlightAfterTimestamp).getTime();
+    const newestUnread = messages.find(m => new Date(m.created_at).getTime() > ts);
+    if (!newestUnread) return;
+    if (newestUnread.transaction_id) setActiveTab('rental');
+    setTimeout(() => {
+      setHighlightedMessageId(newestUnread.id);
+      setTimeout(() => setHighlightedMessageId(null), 1200);
+    }, 150);
   }, [loading]);
 
   async function markAsRead(userId: string) {
@@ -167,13 +187,14 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     setText('');
     setSending(true);
 
-    const { error } = await supabase.from('messages').insert({
+    const { data, error } = await supabase.from('messages').insert({
       conversation_id: conversationId,
       sender_id: currentUserId,
       content,
-    });
+    }).select('id, sender_id, content, created_at, transaction_id').single();
 
-    if (!error) {
+    if (!error && data) {
+      setMessages(prev => [data as Message, ...prev]);
       const now = new Date().toISOString();
       await supabase.from('conversations').update({ last_message: content, last_message_at: now }).eq('id', conversationId);
       await markAsRead(currentUserId);
@@ -185,6 +206,73 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     const fmt = (iso: string) =>
       new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
     return `${fmt(tx.start_date)} → ${fmt(tx.end_date)}`;
+  }
+
+  function canCancelTx(tx: Transaction): boolean {
+    const now = Date.now();
+    if (new Date(tx.end_date).getTime() < now) return false;
+    return new Date(tx.start_date).getTime() - now > 48 * 60 * 60 * 1000;
+  }
+
+  // Update conversation timestamp BEFORE inserting the message so that when the
+  // realtime INSERT event fires, useUnreadCount already sees the updated last_message_at.
+  async function insertSystemMessage(content: string, transactionId: string) {
+    const now = new Date().toISOString();
+    await supabase.from('conversations').update({
+      last_message: content,
+      last_message_at: now,
+    }).eq('id', conversationId);
+    await supabase.from('messages').insert({
+      conversation_id: conversationId,
+      sender_id: currentUserId,
+      content,
+      transaction_id: transactionId,
+    });
+  }
+
+  async function handleCancel(transactionId: string) {
+    const tx = transactions[transactionId];
+    if (!tx) return;
+    const isPaid = tx.status === 'active';
+    const dateRef = formatDateRange(tx);
+
+    Alert.alert(
+      'Cancel this rental?',
+      isPaid
+        ? `${dateRef} will be cancelled and the renter will receive a full refund.`
+        : `${dateRef} will be cancelled. No payment has been taken yet.`,
+      [
+        { text: 'Keep booking', style: 'cancel' },
+        {
+          text: 'Cancel rental',
+          style: 'destructive',
+          onPress: async () => {
+            setActionLoading(true);
+            try {
+              const { error } = await supabase
+                .from('transactions')
+                .update({ status: 'cancelled' })
+                .eq('id', transactionId);
+              if (error) throw error;
+
+              setTransactions(prev => ({
+                ...prev,
+                [transactionId]: { ...prev[transactionId], status: 'cancelled' },
+              }));
+
+              const msg = isPaid
+                ? `⚠️ Your rental (${dateRef}) has been cancelled by the lender. You will receive a full refund.`
+                : `⚠️ Your booking request (${dateRef}) has been cancelled by the lender. No payment was taken.`;
+              await insertSystemMessage(msg, transactionId);
+            } catch (e: any) {
+              Alert.alert('Error', e.message);
+            } finally {
+              setActionLoading(false);
+            }
+          },
+        },
+      ]
+    );
   }
 
   async function handleApprove(transactionId: string) {
@@ -201,11 +289,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
 
       const tx = transactions[transactionId];
       const dateRef = tx ? ` (${formatDateRange(tx)})` : '';
-      await supabase.from('messages').insert({
-        conversation_id: conversationId,
-        sender_id: currentUserId,
-        content: `✅ Request approved${dateRef}! Payment is due within 24 hours.`,
-      });
+      await insertSystemMessage(`✅ Request approved${dateRef}! Payment is due within 24 hours.`, transactionId);
     } catch (e: any) {
       Alert.alert('Error', e.message);
     } finally {
@@ -226,11 +310,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
 
       const tx = transactions[transactionId];
       const dateRef = tx ? ` (${formatDateRange(tx)})` : '';
-      await supabase.from('messages').insert({
-        conversation_id: conversationId,
-        sender_id: currentUserId,
-        content: `❌ Request declined${dateRef}.`,
-      });
+      await insertSystemMessage(`❌ Request declined${dateRef}.`, transactionId);
     } catch (e: any) {
       Alert.alert('Error', e.message);
     } finally {
@@ -287,11 +367,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
 
       const paidTx = transactions[transactionId];
       const paidDateRef = paidTx ? ` (${formatDateRange(paidTx)})` : '';
-      await supabase.from('messages').insert({
-        conversation_id: conversationId,
-        sender_id: (await supabase.auth.getUser()).data.user?.id,
-        content: `💳 Payment completed${paidDateRef}! The rental is now active.`,
-      });
+      await insertSystemMessage(`💳 Payment completed${paidDateRef}! The rental is now active.`, transactionId);
     } catch (e: any) {
       Alert.alert('Error', e.message);
     } finally {
@@ -304,6 +380,15 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   }
 
   const isLender = convInfo?.lender_id === currentUserId;
+  const actionBadgeCount = isLender
+    ? Object.values(transactions).filter(tx => tx.status === 'pending').length
+    : Object.values(transactions).filter(tx =>
+        tx.status === 'approved' &&
+        !(tx.approved_at && Date.now() - new Date(tx.approved_at).getTime() > 86_400_000)
+      ).length;
+  const filteredMessages = messages.filter(m =>
+    activeTab === 'rental' ? !!m.transaction_id : !m.transaction_id
+  );
 
   // When messages lack transaction_id (RPC deployed before column existed),
   // fall back to matching the transaction by the start date embedded in the message text.
@@ -327,7 +412,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     if (isRentalRequest) {
       const tx = findTxForMessage(msg);
       return (
-        <View style={styles.requestCard}>
+        <View style={[styles.requestCard, msg.id === highlightedMessageId && styles.highlighted]}>
           <Text style={styles.requestText}>{msg.content}</Text>
 
           {tx && (
@@ -372,10 +457,30 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                         </TouchableOpacity>
                       )
                   )}
+                  {isLender && canCancelTx(tx) && (
+                    <TouchableOpacity
+                      style={[styles.cancelRentalBtn, actionLoading && styles.btnDisabled]}
+                      onPress={() => handleCancel(tx.id)}
+                      disabled={actionLoading}
+                    >
+                      <Text style={styles.cancelRentalBtnText}>Cancel</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
               {tx.status === 'active' && (
-                <Text style={styles.statusActive}>🔑 Active Rental</Text>
+                <View style={styles.approvedRow}>
+                  <Text style={styles.statusActive}>💳 Paid</Text>
+                  {isLender && canCancelTx(tx) && (
+                    <TouchableOpacity
+                      style={[styles.cancelRentalBtn, actionLoading && styles.btnDisabled]}
+                      onPress={() => handleCancel(tx.id)}
+                      disabled={actionLoading}
+                    >
+                      <Text style={styles.cancelRentalBtnText}>Cancel</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               )}
               {tx.status === 'completed' && (
                 <Text style={styles.statusCompleted}>✓ Completed</Text>
@@ -392,7 +497,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     }
 
     return (
-      <View style={[styles.bubbleWrapper, isMe ? styles.bubbleWrapperMe : styles.bubbleWrapperThem]}>
+      <View style={[styles.bubbleWrapper, isMe ? styles.bubbleWrapperMe : styles.bubbleWrapperThem, msg.id === highlightedMessageId && styles.highlighted]}>
         <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
           <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
             {msg.content}
@@ -415,6 +520,42 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
           <Text style={styles.headerName} numberOfLines={1}>{otherUserName}</Text>
           <Text style={styles.headerItem} numberOfLines={1}>📦 {itemTitle}</Text>
         </View>
+        {isLender && convInfo?.item_id && (
+          <TouchableOpacity
+            style={styles.calendarBtn}
+            onPress={() => {
+              (navigation as any).getParent()?.getParent()?.navigate('Profile', {
+                screen: 'ManageItem',
+                params: { itemId: convInfo.item_id, itemTitle },
+              });
+            }}
+          >
+            <Text style={styles.calendarBtnText}>📅</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Tab bar */}
+      <View style={styles.tabBar}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'chat' && styles.tabActive]}
+          onPress={() => setActiveTab('chat')}
+        >
+          <Text style={[styles.tabText, activeTab === 'chat' && styles.tabTextActive]}>💬 Chat</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'rental' && styles.tabActive]}
+          onPress={() => setActiveTab('rental')}
+        >
+          <View style={styles.tabInner}>
+            <Text style={[styles.tabText, activeTab === 'rental' && styles.tabTextActive]}>📋 Rental</Text>
+            {actionBadgeCount > 0 && activeTab !== 'rental' && (
+              <View style={styles.tabBadge}>
+                <Text style={styles.tabBadgeText}>{actionBadgeCount}</Text>
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
       </View>
 
       <KeyboardAvoidingView
@@ -424,10 +565,16 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       >
         {loading ? (
           <ActivityIndicator color="#fff" style={{ flex: 1 }} />
+        ) : filteredMessages.length === 0 ? (
+          <View style={styles.emptyTab}>
+            <Text style={styles.emptyTabText}>
+              {activeTab === 'chat' ? 'No messages yet. Say hi!' : 'No rental activity yet.'}
+            </Text>
+          </View>
         ) : (
           <FlatList
             ref={flatListRef}
-            data={messages}
+            data={filteredMessages}
             keyExtractor={(m) => m.id}
             inverted
             contentContainerStyle={styles.messageList}
@@ -438,28 +585,30 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
           />
         )}
 
-        <View style={styles.inputRow}>
-          <TextInput
-            style={styles.input}
-            placeholder="Message..."
-            placeholderTextColor="#555"
-            value={text}
-            onChangeText={setText}
-            multiline
-            maxLength={500}
-            onSubmitEditing={send}
-          />
-          <TouchableOpacity
-            style={[styles.sendBtn, (!text.trim() || sending) && styles.sendBtnDisabled]}
-            onPress={send}
-            disabled={!text.trim() || sending}
-          >
-            {sending
-              ? <ActivityIndicator color="#000" size="small" />
-              : <Text style={styles.sendBtnText}>↑</Text>
-            }
-          </TouchableOpacity>
-        </View>
+        {activeTab === 'chat' && (
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.input}
+              placeholder="Message..."
+              placeholderTextColor="#555"
+              value={text}
+              onChangeText={setText}
+              multiline
+              maxLength={500}
+              onSubmitEditing={send}
+            />
+            <TouchableOpacity
+              style={[styles.sendBtn, (!text.trim() || sending) && styles.sendBtnDisabled]}
+              onPress={send}
+              disabled={!text.trim() || sending}
+            >
+              {sending
+                ? <ActivityIndicator color="#000" size="small" />
+                : <Text style={styles.sendBtnText}>↑</Text>
+              }
+            </TouchableOpacity>
+          </View>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -478,6 +627,8 @@ const styles = StyleSheet.create({
   headerInfo: { flex: 1 },
   headerName: { fontSize: 16, fontWeight: '600', color: '#fff' },
   headerItem: { fontSize: 12, color: '#666', marginTop: 1 },
+  calendarBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  calendarBtnText: { fontSize: 20 },
 
   messageList: { padding: 16, gap: 8 },
   bubbleWrapper: { marginVertical: 2, maxWidth: '80%' },
@@ -526,6 +677,11 @@ const styles = StyleSheet.create({
   },
   payBtnText: { color: '#000', fontWeight: '700', fontSize: 13 },
   requestTime: { color: '#555', fontSize: 11, textAlign: 'right' },
+  cancelRentalBtn: {
+    paddingHorizontal: 12, paddingVertical: 6,
+    backgroundColor: '#3a0a0a', borderRadius: 8, borderWidth: 1, borderColor: '#f44336',
+  },
+  cancelRentalBtnText: { color: '#f44336', fontSize: 12, fontWeight: '700' },
 
   inputRow: {
     flexDirection: 'row', alignItems: 'flex-end', gap: 10,
@@ -544,4 +700,32 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: { backgroundColor: '#2a2a2a' },
   sendBtnText: { fontSize: 20, color: '#000', fontWeight: '600', marginTop: -2 },
+
+  tabBar: {
+    flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#2a2a2a',
+    backgroundColor: '#1a1a1a',
+  },
+  tab: { flex: 1, paddingVertical: 12, alignItems: 'center' },
+  tabActive: { borderBottomWidth: 2, borderBottomColor: '#fff' },
+  tabText: { fontSize: 14, color: '#555', fontWeight: '500' },
+  tabTextActive: { color: '#fff', fontWeight: '600' },
+  tabInner: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  tabBadge: {
+    backgroundColor: '#f0a500', borderRadius: 10,
+    minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  tabBadgeText: { color: '#000', fontSize: 10, fontWeight: '800' },
+
+  emptyTab: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 },
+  emptyTabText: { color: '#444', fontSize: 15 },
+
+  highlighted: {
+    borderColor: '#4da6ff',
+    borderWidth: 2,
+    shadowColor: '#4da6ff',
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 6,
+  },
 });
