@@ -1,14 +1,17 @@
 # Next Suggested Step — For Nati 👋
 
-## What to build next: QR screens (H)
+## Resume here after the Claude Code restart
 
-GPS / Location-based feed (G) is now complete — items are filtered by a user-selected radius from the device GPS (with profile-city fallback), and Google Places powers a real CityPicker in Onboarding / Add / Edit. See "Done" below for details.
+**Context:** the local Supabase MCP server's access token in `~/.claude.json` was a masked/redacted value by mistake (`sbp_c179••••90c9`) instead of a real personal access token. It's been replaced with a real one. MCP servers only load at session start, so a full Claude Code restart was required — **if you're reading this right after that restart, DB access should now be live.**
 
-### H. QR code transfer & return
-- After payment succeeds (status → `active`), generate a `qr_token` (UUID) and store it on the transaction.
-- **Transfer flow**: Renter opens a screen showing their QR code → Lender scans it → transaction status → `active` (item handed over).
-- **Return flow**: New QR generated → Lender scans → status → `completed`.
-- Both screens live inside the rental flow (accessible from `ChatRoomScreen` Rental tab and `MyRentalsScreen`).
+**What to do immediately on resume:**
+1. Verify the Supabase MCP connection works (e.g. list tables) before starting any DB work.
+2. Pick up backlog item **M — Post-rental rating prompt** (see Backlog below). `RatingScreen` UI already exists and is fully wired for stars + review text, but the Submit button is currently a **local-only no-op** — it doesn't write anything to the database. This is the natural next step right after the QR handoff flow.
+3. We agreed to work through the backlog **one item at a time, in priority order**, verifying each before moving to the next — don't batch multiple backlog items into one session without checking in.
+
+## What to build next: Rating persistence (M)
+
+QR code transfer & return (H) is now complete and demo/theater-mode code has been fully removed from the codebase (see "Done" below for both). GPS / Location-based feed (G) was completed earlier.
 
 ---
 
@@ -42,11 +45,13 @@ When you build the QR flow, wire any status change (item handed over, item retur
 
 # Backlog
 
-### M. Post-rental rating prompt
-- When a transaction moves to `completed`, both parties are prompted inline (inside `ChatRoomScreen` Rental tab) to rate the other person: 1–5 stars + optional short comment.
-- Ratings stored in a new `ratings` table: `(id, reviewer_id, reviewee_id, transaction_id, score, comment, created_at)`.
-- Scores aggregate into `lender_score` and `renter_score` on `profiles` (fields already exist, currently 0). Use a DB trigger or RPC to recompute the average on each new rating row.
-- SAS rule: the rating UI lives only in `ChatRoomScreen`. `MyRentalsScreen` / `HistoryScreen` show the final score but never host the rating action itself.
+### M. Post-rental rating prompt ⬅ immediate next priority
+- `RatingScreen` (src/screens/RatingScreen.tsx) already has the full UI — stars, review text, submit button, success state — but `onPress={() => setSubmitted(true)}` is a **local-only no-op**. Nothing is persisted.
+- **First: check whether `profiles.lender_score` / `profiles.renter_score` and a `ratings` table already exist** (no migration currently defines them — verify live via Supabase MCP before assuming).
+- If missing, create a `ratings` table: `(id, reviewer_id, reviewee_id, transaction_id, score, comment, created_at)`.
+- Wire the Submit button to an RPC (e.g. `submit_rating`) that inserts the row and recomputes the reviewee's `lender_score`/`renter_score` average.
+- Currently `RatingScreen` is only reachable from the QR return-done celebration (`QRDisplayScreen` / `QRScanScreen` → "Rate the Experience"). Per the SAS rule, keep it that way — don't add a second rating entry point elsewhere.
+- Also confirms/replaces the currently-hardcoded "Impact Score" numbers shown on the QR done screens (`SCORE_AFTER = 4.0`, `CO2_SAVED = '3.5'` in QRDisplayScreen.tsx, and the hardcoded `4.4` in QRScanScreen.tsx) — those were demo placeholders and should eventually reflect the real score.
 
 ### N. Retroactive rental scoring (reputation bootstrap)
 - Both sides (lender and renter) have a history of past rentals. After each `completed` transaction, the system should look back at the full history for both parties and recompute their scores (weighted recency — more recent rentals count more).
@@ -59,23 +64,13 @@ When you build the QR flow, wire any status change (item handed over, item retur
 - Toggle on item upload: "Also available for purchase" + sale price
 - "Buy" button on swipe panel + Item Detail (currently a no-op placeholder)
 
-### D. Rating system
-- After a rental is marked Completed, both parties are prompted to rate each other (1–5 stars + optional comment)
-- Ratings feed into `lender_score` and `renter_score` on `profiles` (fields exist, currently 0)
-- Lender score factors: item condition accuracy, response speed, cancellation history
-- Renter score factors: return time, item care
-- `lender_cancellations` counter on `profiles` → deduct from lender score, show warning badge on public profile after threshold
-- Ratings stored in a new `ratings` table: `(id, reviewer_id, reviewee_id, transaction_id, score, comment, created_at)`
+### D. Rating system (duplicate of M — merge notes when implementing)
+- Same scope as M above. Additional detail from this entry: lender score factors = item condition accuracy, response speed, cancellation history; renter score factors = return time, item care.
+- `lender_cancellations` counter on `profiles` → deduct from lender score, show warning badge on public profile after threshold (not yet scoped in M — fold in here).
 
 ### E. Feed ranking algorithm (beyond distance)
 - Current `get_feed` ranks by distance only. Extend the weighted formula with: lender score, interest match (intersect `profiles.interests` with `items.category`/tags), recency.
 - Likely a new `p_user_id` parameter or just use `auth.uid()` internally as it already does for the owner filter.
-
-### H. QR code transfer & return ⬅ immediate next priority
-- After payment → generate `qr_token` on transaction
-- Renter shows QR → lender scans → status → active
-- Return: new QR → lender scans → status → completed
-- See the detailed spec at the top of this file
 
 ### I. Back navigation audit
 - Every `navigation.goBack()` call needs a `canGoBack()` guard
@@ -124,6 +119,8 @@ When you build the QR flow, wire any status change (item handed over, item retur
 
 ## Done
 
+- **H.** QR code transfer & return — `qr_token`/`return_qr_token` on transactions, `confirm_condition`/`ensure_qr_token`/`scan_qr_handoff` RPCs, `QRDisplayScreen` + `QRScanScreen` (checklist → photo → QR → proximity-checked scan), `MeetingPointScreen` for coordinating handoff location. Reachable only from `ChatRoomScreen` Rental tab (SAS).
+- **Demo/theater mode removed** — deleted `DemoContext`/`DemoOverlay`/`TapFlash`, the demo-conductor/seed/start scripts, `DEMO_SCRIPT.md`, and staged demo photos. Stripped all `demoMode`/`theaterMode`/`altEnding`/`onlyTransactionId` branches from `ChatRoomScreen`, `HomeScreen`, `ItemDetailScreen`, `PublicProfileScreen`, `QRDisplayScreen`, `QRScanScreen`, `RatingScreen` — they now run only their normal, user-driven flows.
 - **A.** Date-based availability filtering in AI Planner — edge function filters by transactions + blocked dates
 - **B.** Wishlist — `wishlist` table, WishlistScreen, ❤️ button wired in ItemDetail + HomeScreen swipe panel
 - **F.** Profile redesign — unified layout (own + public), score badges, hamburger menu with My Items / My Rentals / Wishlist / History / Switch User / Log out
