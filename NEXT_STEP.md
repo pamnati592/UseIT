@@ -1,12 +1,18 @@
 # Next Suggested Step — For Nati 👋
 
-## Resume here after the Claude Code restart
+## Resume here
 
-**Context:** the local Supabase MCP server's access token in `~/.claude.json` was a masked/redacted value by mistake (`sbp_c179••••90c9`) instead of a real personal access token. It's been replaced with a real one. MCP servers only load at session start, so a full Claude Code restart was required — **if you're reading this right after that restart, DB access should now be live.**
+**Context:** the local Supabase MCP server's access token in `~/.claude.json` was a masked/redacted value by mistake (`sbp_c179••••90c9`) instead of a real personal access token. It's been replaced with a real one, and the connection has now been **verified working** (2026-07-13): `list_projects` and `list_tables` both succeeded. The project had also gone `INACTIVE` (auto-paused) and was restored via `restore_project` — it's back to `ACTIVE_HEALTHY`.
 
-**What to do immediately on resume:**
-1. Verify the Supabase MCP connection works (e.g. list tables) before starting any DB work.
-2. Pick up backlog item **M — Post-rental rating prompt** (see Backlog below). `RatingScreen` UI already exists and is fully wired for stars + review text, but the Submit button is currently a **local-only no-op** — it doesn't write anything to the database. This is the natural next step right after the QR handoff flow.
+**Schema check done for item M (2026-07-13):**
+- `profiles.lender_score` and `profiles.renter_score` **already exist** (`double precision`, default `0`) — no migration needed for those two columns.
+- **No `ratings` table exists yet** — confirms it needs to be created from scratch as planned below.
+- Rest of the schema (`items`, `transactions`, `conversations`, `messages`, `item_blocked_dates`, `wishlist`) matches what's documented, no surprises.
+- Minor note: `public.spatial_ref_sys` (PostGIS system table) has RLS disabled — standard/low-risk, not app data, not something to fix as part of M.
+
+**What to do next:**
+1. DB access is confirmed live — no need to re-verify at the start of the next session.
+2. Pick up backlog item **M — Post-rental rating prompt** (see Backlog below). `RatingScreen` UI already exists and is fully wired for stars + review text, but the Submit button is currently a **local-only no-op** — it doesn't write anything to the database. This is the natural next step right after the QR handoff flow. Work has **not started** on M yet — schema was only inspected, nothing written.
 3. We agreed to work through the backlog **one item at a time, in priority order**, verifying each before moving to the next — don't batch multiple backlog items into one session without checking in.
 
 ## What to build next: Rating persistence (M)
