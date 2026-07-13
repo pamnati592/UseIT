@@ -1,16 +1,15 @@
-import { useMemo, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import { useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { ChevronLeft, MapPin, Navigation, Users, CircleCheck } from 'lucide-react-native';
-import TapFlash from '../components/TapFlash';
 
 type Props = NativeStackScreenProps<ChatsStackParamList, 'MeetingPoint'>;
 
-// Hardcoded demo meeting point — same on both devices for visual continuity
+// TODO: replace with a real suggested spot once meeting-point selection is built
 const MEETING_LOCATION = {
   name: 'Dizengoff Square',
   address: 'Dizengoff Square, Tel Aviv',
@@ -20,22 +19,13 @@ const MEETING_LOCATION = {
 export default function MeetingPointScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { renterName, lenderName, confirmMode, theaterMode } = route.params;
+  const { renterName, lenderName, confirmMode } = route.params;
   const [confirmed, setConfirmed] = useState(false);
-  const [confirmTapTs, setConfirmTapTs] = useState<number | null>(null);
 
   function handleConfirm() {
     setConfirmed(true);
-    if (!theaterMode) setTimeout(() => navigation.goBack(), 1400);
+    setTimeout(() => navigation.goBack(), 1400);
   }
-
-  // Theater: Nati reviews the suggested spot, then a visible tap confirms it.
-  useEffect(() => {
-    if (!theaterMode || !confirmMode) return;
-    const t1 = setTimeout(() => setConfirmTapTs(Date.now()), 2100);
-    const t2 = setTimeout(() => setConfirmed(true), 2700);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, []);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -141,7 +131,6 @@ export default function MeetingPointScreen({ navigation, route }: Props) {
           ) : (
             <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirm} activeOpacity={0.85}>
               <Text style={styles.confirmBtnText}>Confirm Meeting Point</Text>
-              <TapFlash trigger={confirmTapTs} style={{ alignSelf: 'center', top: 7 }} />
             </TouchableOpacity>
           )}
         </View>

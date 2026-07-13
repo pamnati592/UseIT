@@ -9,11 +9,11 @@ import type { QrPhase } from '../screens/qrShared';
 
 export type ChatsStackParamList = {
   ConversationsList: undefined;
-  ChatRoom: { conversationId: string; itemTitle: string; otherUserName: string; initialText?: string; targetTransactionId?: string; initialTab?: 'chat' | 'rental'; highlightAfterTimestamp?: string; onlyTransactionId?: string };
-  QRDisplay: { transactionId: string; phase: QrPhase; itemTitle: string; otherName?: string; demoMode?: boolean; theaterMode?: boolean; altEnding?: boolean; demoLat?: number; demoLng?: number };
-  QRScan: { transactionId: string; phase: QrPhase; itemTitle: string; otherName?: string; demoMode?: boolean; theaterMode?: boolean; altEnding?: boolean };
-  MeetingPoint: { renterName: string; lenderName: string; confirmMode?: boolean; theaterMode?: boolean };
-  Rating: { itemTitle: string; otherName: string; theaterMode?: boolean; prefillText?: string };
+  ChatRoom: { conversationId: string; itemTitle: string; otherUserName: string; initialText?: string; targetTransactionId?: string; initialTab?: 'chat' | 'rental'; highlightAfterTimestamp?: string };
+  QRDisplay: { transactionId: string; phase: QrPhase; itemTitle: string; otherName?: string };
+  QRScan: { transactionId: string; phase: QrPhase; itemTitle: string; otherName?: string };
+  MeetingPoint: { renterName: string; lenderName: string; confirmMode?: boolean };
+  Rating: { itemTitle: string; otherName: string };
 };
 
 const Stack = createNativeStackNavigator<ChatsStackParamList>();

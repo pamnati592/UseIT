@@ -14,7 +14,6 @@ import { metersBetween } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CHECKLIST_ITEMS, PROXIMITY_LIMIT_M, type QrPayload } from './qrShared';
-import TapFlash from '../components/TapFlash';
 
 type Props = NativeStackScreenProps<ChatsStackParamList, 'QRScan'>;
 type Step = 'checklist' | 'photo' | 'scan' | 'done';
@@ -22,19 +21,16 @@ type Step = 'checklist' | 'photo' | 'scan' | 'done';
 export default function QRScanScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { transactionId, phase, itemTitle, otherName, demoMode, theaterMode, altEnding } = route.params;
+  const { transactionId, phase, itemTitle, otherName } = route.params;
 
   const [permission, requestPermission] = useCameraPermissions();
   const [checked,    setChecked]    = useState<boolean[]>(CHECKLIST_ITEMS.map(() => false));
-  // Theater handoff order: the receiver scans the QR FIRST, then does checklist + photo.
-  const [step,       setStep]       = useState<Step>(theaterMode && !altEnding ? 'scan' : 'checklist');
+  const [step,       setStep]       = useState<Step>('checklist');
   const [scannedFlash, setScannedFlash] = useState(false);
   const [photoUri,   setPhotoUri]   = useState<string | null>(null);
-  const [demoAssetSrc, setDemoAssetSrc] = useState<number | null>(null);
   const [processing, setProcessing] = useState(false);
   const [disputeModal, setDisputeModal] = useState<{ visible: boolean; step: 1 | 2 }>({ visible: false, step: 1 });
   const [disputeDone, setDisputeDone] = useState(false);
-  const [disputeAsset, setDisputeAsset] = useState<number | null>(null);
   const [disputePhotoUri, setDisputePhotoUri] = useState<string | null>(null);
   const [disputeText, setDisputeText] = useState('');
   const scoreAnim = useRef(new Animated.Value(0)).current;
@@ -83,112 +79,6 @@ export default function QRScanScreen({ navigation, route }: Props) {
     }
   }
 
-  // Demo bypass: auto-runs the QR scan flow without user interaction.
-  const demoRun = useRef(false);
-  useEffect(() => {
-    if (!demoMode || demoRun.current) return;
-    demoRun.current = true;
-    const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
-
-    (async () => {
-      if (theaterMode && altEnding) {
-        // Alt ending: the rewind lands on the unchecked checklist — the scanner
-        // does NOT fill it and reports the damage instead.
-        await sleep(2600);
-        setDisputeModal({ visible: true, step: 1 });
-        await sleep(2600);
-        setDisputeModal({ visible: true, step: 2 });
-        await sleep(850);
-        setDisputeText('The lens');
-        await sleep(400);
-        setDisputeText('The lens is');
-        await sleep(400);
-        setDisputeText('The lens is cracked');
-        await sleep(1100);
-        setDisputeAsset(require('../../assets/demo/photo-return-damaged.jpg'));
-        setDisputePhotoUri('demo-asset');
-        await sleep(1900);
-        setDisputeDone(true);
-        // Close before the final theater slide — iOS won't stack two native modals
-        await sleep(7000);
-        setDisputeModal({ visible: false, step: 1 });
-        return;
-      }
-
-      if (theaterMode) {
-        // Theater handoff: scan first → checklist → photo → done. No DB calls.
-        await sleep(2600);
-        setScannedFlash(true);
-        await sleep(1300);
-        setScannedFlash(false);
-        setStep('checklist');
-
-        await sleep(850);
-        for (let i = 0; i < CHECKLIST_ITEMS.length; i++) {
-          setChecked(prev => prev.map((v, idx) => idx === i ? true : v));
-          await sleep(950);
-        }
-        await sleep(1300);
-        setStep('photo');
-
-        await sleep(1550);
-        const theaterAsset: number = phase === 'pickup'
-          ? require('../../assets/demo/photo-pickup.jpeg')
-          : require('../../assets/demo/photo-return-ok.jpg');
-        setDemoAssetSrc(theaterAsset);
-        setPhotoUri('demo-asset');
-        await sleep(1900);
-
-        setProcessing(true);
-        await sleep(1300);
-        setProcessing(false);
-        setStep('done');
-        return;
-      }
-
-      // Non-theater demo: original order with real RPCs (checklist → photo → scan)
-      await sleep(1500);
-      for (let i = 0; i < CHECKLIST_ITEMS.length; i++) {
-        setChecked(prev => prev.map((v, idx) => idx === i ? true : v));
-        await sleep(750);
-      }
-      await sleep(1200);
-      setStep('photo');
-
-      await sleep(1800);
-      const demoAsset: number = phase === 'pickup'
-        ? require('../../assets/demo/photo-pickup.jpeg')
-        : require('../../assets/demo/photo-return-ok.jpg');
-      setDemoAssetSrc(demoAsset);
-      setPhotoUri('demo-asset');
-      await sleep(2000);
-
-      {
-        setProcessing(true);
-        try {
-          await supabase.rpc('confirm_condition', { p_tx: transactionId, p_phase: phase });
-        } catch { /* ignore */ }
-
-        const tokenField = phase === 'pickup' ? 'qr_token' : 'return_qr_token';
-        let token: string | null = null;
-        for (let attempt = 0; attempt < 90; attempt++) {
-          const { data: tx } = await supabase
-            .from('transactions').select(tokenField).eq('id', transactionId).single();
-          token = (tx as Record<string, string | null>)?.[tokenField] ?? null;
-          if (token) break;
-          await sleep(1000);
-        }
-        if (!token) { setProcessing(false); return; }
-        try {
-          await supabase.rpc('scan_qr_handoff', { p_tx: transactionId, p_token: token, p_phase: phase });
-          setStep('done');
-        } catch { /* user can tap manually */ } finally {
-          setProcessing(false);
-        }
-      }
-    })();
-  }, [demoMode]);
-
   // Animate the impact score bar when the return completes
   useEffect(() => {
     if (step !== 'done' || phase !== 'return') return;
@@ -197,9 +87,7 @@ export default function QRScanScreen({ navigation, route }: Props) {
 
   async function confirmDispute() {
     try {
-      if (!theaterMode) {
-        await supabase.rpc('report_issue', { p_tx: transactionId });
-      }
+      await supabase.rpc('report_issue', { p_tx: transactionId });
       setDisputeDone(true);
     } catch (e: any) {
       Alert.alert('Error', e.message ?? 'Could not submit dispute.');
@@ -275,7 +163,6 @@ export default function QRScanScreen({ navigation, route }: Props) {
                   <View style={[styles.checkbox, checked[i] && styles.checkboxOn]}>
                     {checked[i] && <Check size={15} color={colors.white} strokeWidth={3} />}
                   </View>
-                  {theaterMode && <TapFlash trigger={checked[i] ? 1 : null} style={{ right: 12, alignSelf: 'center' }} />}
                 </TouchableOpacity>
               ))}
               <TouchableOpacity
@@ -308,7 +195,7 @@ export default function QRScanScreen({ navigation, route }: Props) {
               {photoUri ? (
                 <View style={styles.previewWrap}>
                   <Image
-                    source={demoAssetSrc ? demoAssetSrc : { uri: photoUri }}
+                    source={{ uri: photoUri! }}
                     style={styles.preview}
                     resizeMode="cover"
                   />
@@ -331,7 +218,7 @@ export default function QRScanScreen({ navigation, route }: Props) {
               >
                 {processing
                   ? <ActivityIndicator color={colors.btnText} />
-                  : <Text style={styles.primaryBtnText}>{theaterMode ? 'Confirm Condition' : 'Confirm & Scan QR'}</Text>
+                  : <Text style={styles.primaryBtnText}>Confirm & Scan QR</Text>
                 }
               </TouchableOpacity>
             </>
@@ -402,7 +289,7 @@ export default function QRScanScreen({ navigation, route }: Props) {
             style={StyleSheet.absoluteFill}
             facing="back"
             barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-            onBarcodeScanned={theaterMode ? undefined : onScanned}
+            onBarcodeScanned={onScanned}
           />
           <View style={styles.scanOverlay} pointerEvents="none">
             <View style={styles.scanFrame} />
@@ -481,7 +368,7 @@ export default function QRScanScreen({ navigation, route }: Props) {
                 {/* Damage photo */}
                 {disputePhotoUri ? (
                   <Image
-                    source={disputeAsset ? disputeAsset : { uri: disputePhotoUri }}
+                    source={{ uri: disputePhotoUri }}
                     style={styles.disputePreview}
                     resizeMode="cover"
                   />

@@ -11,8 +11,6 @@ import { supabase } from '../services/supabase';
 import { chatBus } from '../services/chatBus';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
-import { useDemoContext } from '../contexts/DemoContext';
-import TapFlash from '../components/TapFlash';
 import {
   Check, X, CreditCard, Clock, ChevronLeft, Package, Calendar, MessageCircle, ClipboardList, ArrowUp,
   ScanLine, QrCode, CircleCheck, TriangleAlert, MapPin, MessageSquare, Scale, UserRound,
@@ -48,7 +46,7 @@ type Props = NativeStackScreenProps<ChatsStackParamList, 'ChatRoom'>;
 export default function ChatRoomScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { conversationId, itemTitle, otherUserName, initialText, targetTransactionId, initialTab, highlightAfterTimestamp, onlyTransactionId } = route.params;
+  const { conversationId, itemTitle, otherUserName, initialText, targetTransactionId, initialTab, highlightAfterTimestamp } = route.params;
   const [activeTab, setActiveTab] = useState<'chat' | 'rental'>(initialTab ?? 'chat');
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -63,8 +61,6 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   const [payLoading, setPayLoading] = useState(false);
   const [disputeModal, setDisputeModal] = useState<{ visible: boolean; transactionId: string | null; step: 1 | 2 }>({ visible: false, transactionId: null, step: 1 });
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
-  const { demoState } = useDemoContext();
-  const demoTap = demoState.demoTapTarget;
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const flatListRef = useRef<FlatList<Message>>(null);
 
@@ -431,12 +427,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
         tx.status === 'approved' &&
         !(tx.approved_at && Date.now() - new Date(tx.approved_at).getTime() > 86_400_000)
       ).length;
-  // Demo: when onlyTransactionId is set, the chat shows nothing but that
-  // request — history from previous runs (undeletable under RLS) stays hidden.
-  const visibleMessages = onlyTransactionId
-    ? messages.filter(m => m.transaction_id === onlyTransactionId)
-    : messages;
-  const filteredMessages = visibleMessages.filter(m =>
+  const filteredMessages = messages.filter(m =>
     activeTab === 'rental' ? !!m.transaction_id : !m.transaction_id
   );
 
@@ -506,10 +497,6 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                   >
                     <UserRound size={15} color={colors.primary} strokeWidth={2} />
                     <Text style={styles.viewProfileText}>View {otherUserName}'s profile</Text>
-                    <TapFlash
-                      trigger={demoTap?.target === 'chat-view-profile' ? demoTap.ts : null}
-                      style={{ alignSelf: 'center' }}
-                    />
                   </TouchableOpacity>
                 </>
               )}

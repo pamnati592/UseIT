@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView,
 } from 'react-native';
@@ -8,7 +8,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
-import TapFlash from '../components/TapFlash';
 
 type Props = NativeStackScreenProps<ChatsStackParamList, 'Rating'>;
 
@@ -17,39 +16,11 @@ const STAR_COLOR = '#f59e0b';
 export default function RatingScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { itemTitle, otherName, theaterMode, prefillText } = route.params;
+  const { itemTitle, otherName } = route.params;
 
   const [stars, setStars] = useState(0);
   const [review, setReview] = useState('');
   const [submitted, setSubmitted] = useState(false);
-  const [submitTapTs, setSubmitTapTs] = useState<number | null>(null);
-
-  // Theater auto-flow: stars fill one by one, review types itself, then submits.
-  const demoRun = useRef(false);
-  useEffect(() => {
-    if (!theaterMode || demoRun.current) return;
-    demoRun.current = true;
-    const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
-
-    (async () => {
-      await sleep(850);
-      for (let i = 1; i <= 5; i++) {
-        setStars(i);
-        await sleep(280);
-      }
-      await sleep(750);
-      const text = prefillText ?? 'Great experience, would rent again!';
-      const words = text.split(' ');
-      for (let i = 1; i <= words.length; i++) {
-        setReview(words.slice(0, i).join(' '));
-        await sleep(160);
-      }
-      await sleep(1200);
-      setSubmitTapTs(Date.now());
-      await sleep(450);
-      setSubmitted(true);
-    })();
-  }, [theaterMode]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -121,7 +92,6 @@ export default function RatingScreen({ navigation, route }: Props) {
               disabled={stars === 0}
             >
               <Text style={styles.primaryBtnText}>Submit Rating</Text>
-              <TapFlash trigger={submitTapTs} style={{ alignSelf: 'center', top: 8 }} />
             </TouchableOpacity>
           </>
         )}

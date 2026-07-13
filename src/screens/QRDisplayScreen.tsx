@@ -14,40 +14,23 @@ import { getCurrentLocationOnce } from '../hooks/useUserLocation';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CHECKLIST_ITEMS, type QrPayload } from './qrShared';
-import { DEMO_LAT, DEMO_LNG } from '../contexts/DemoContext';
 
 type Props = NativeStackScreenProps<ChatsStackParamList, 'QRDisplay'>;
 type Step = 'checklist' | 'photo' | 'qr' | 'waiting' | 'done';
 
-// Renter-side demo score (Nati): 3.7 → 4.0 out of 5
-const DEMO_SCORE_AFTER = 4.0;
-const DEMO_CO2         = '3.5';
+// TODO: replace with the real computed Impact Score once that feature lands
+const SCORE_AFTER = 4.0;
+const CO2_SAVED    = '3.5';
 
 export default function QRDisplayScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { transactionId, phase, itemTitle, otherName, demoMode, theaterMode, altEnding, demoLat, demoLng } = route.params;
+  const { transactionId, phase, itemTitle, otherName } = route.params;
 
   const [checked,  setChecked]  = useState<boolean[]>(CHECKLIST_ITEMS.map(() => false));
-  // Theater handoff order: the holder shows the QR immediately — no checklist or
-  // photo on this side (the scanner does those). Alt ending rewinds straight to
-  // the waiting banner while the other phone files the dispute.
-  const [step,     setStep]     = useState<Step>(
-    theaterMode ? (altEnding ? 'waiting' : 'qr') : 'checklist'
-  );
+  const [step,     setStep]     = useState<Step>('checklist');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
-  const [demoAssetSrc, setDemoAssetSrc] = useState<number | null>(null);
-  const [payload,  setPayload]  = useState<QrPayload | null>(() =>
-    theaterMode
-      ? {
-          t: transactionId,
-          k: `theater-${phase}-${altEnding ? 'alt' : 'main'}-token`,
-          p: phase,
-          lat: demoLat ?? DEMO_LAT,
-          lng: demoLng ?? DEMO_LNG,
-        }
-      : null
-  );
+  const [payload,  setPayload]  = useState<QrPayload | null>(null);
   const [working,  setWorking]  = useState(false);
   const scoreAnim = useRef(new Animated.Value(0)).current;
   const pollRef   = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -97,8 +80,7 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
   }
 
   useEffect(() => {
-    // In theater mode the demo effect handles the qr→done transition via a fixed timer
-    if (step !== 'qr' || theaterMode) return;
+    if (step !== 'qr') return;
     pollRef.current = setInterval(async () => {
       const { data } = await supabase
         .from('transactions')
@@ -108,7 +90,7 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
       if (data?.status === successStatus) setStep('done');
     }, 3000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [step, transactionId, successStatus, theaterMode]);
+  }, [step, transactionId, successStatus]);
 
   // Animate the score bar when the return celebration appears
   useEffect(() => {
@@ -119,65 +101,6 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
       useNativeDriver: false,
     }).start();
   }, [step, phase]);
-
-  // Demo auto-advance: runs the full renter-side QR flow without any user interaction.
-  // In theaterMode: skips all DB calls and uses a fixed timer to advance to done.
-  const demoRun = useRef(false);
-  useEffect(() => {
-    if (!demoMode || demoRun.current) return;
-    demoRun.current = true;
-    const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
-
-    (async () => {
-      if (theaterMode) {
-        // Theater: QR already on screen from mount. The other phone "scans" it,
-        // then this side shows a waiting banner while they run checklist + photo.
-        if (altEnding) {
-          // Rewind landed on the waiting banner; the dispute lands ~12s later.
-          await sleep(12000);
-          setStep('done');
-          return;
-        }
-        await sleep(3900);   // other phone flashes "QR Scanned!" at ~2.6s
-        setStep('waiting');
-        await sleep(12000);  // other phone finishes checklist + photo
-        setStep('done');
-        return;
-      }
-
-      // Real mode: checklist → photo → QR via Supabase RPCs
-      await sleep(1500);
-      for (let i = 0; i < CHECKLIST_ITEMS.length; i++) {
-        setChecked(prev => prev.map((v, idx) => idx === i ? true : v));
-        await sleep(750);
-      }
-      await sleep(1200);
-      setStep('photo');
-
-      await sleep(1800);
-      const demoAsset: number = altEnding
-        ? require('../../assets/demo/photo-return-damaged.jpg')
-        : phase === 'pickup'
-          ? require('../../assets/demo/photo-pickup.jpeg')
-          : require('../../assets/demo/photo-return-ok.jpg');
-      setDemoAssetSrc(demoAsset);
-      setPhotoUri('demo-asset');
-
-      await sleep(2200);
-      setWorking(true);
-      try {
-        const coords = { latitude: demoLat ?? DEMO_LAT, longitude: demoLng ?? DEMO_LNG };
-        await supabase.rpc('confirm_condition', { p_tx: transactionId, p_phase: phase });
-        const { data: token } = await supabase.rpc('ensure_qr_token', { p_tx: transactionId, p_phase: phase });
-        setPayload({ t: transactionId, k: token as string, p: phase, lat: coords.latitude, lng: coords.longitude });
-        setStep('qr');
-      } catch {
-        // QR step will not advance — user can tap manually
-      } finally {
-        setWorking(false);
-      }
-    })();
-  }, [demoMode]);
 
   async function reportIssue() {
     Alert.alert(
@@ -248,7 +171,7 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
             {photoUri ? (
               <View style={styles.previewWrap}>
                 <Image
-                  source={demoAssetSrc ? demoAssetSrc : { uri: photoUri }}
+                  source={{ uri: photoUri! }}
                   style={styles.preview}
                   resizeMode="cover"
                 />
@@ -309,8 +232,8 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
           </View>
         )}
 
-        {/* ── Step 4a: Return celebration (or dispute notice for alt ending) ── */}
-        {step === 'done' && phase === 'return' && !altEnding && (
+        {/* ── Step 4a: Return celebration ── */}
+        {step === 'done' && phase === 'return' && (
           <View style={styles.celebWrap}>
             <View style={styles.celebIconRing}>
               <CircleCheck size={52} color="#22c55e" strokeWidth={1.8} />
@@ -327,7 +250,7 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
                 </View>
               </View>
 
-              <Text style={styles.impactScoreNum}>{DEMO_SCORE_AFTER.toFixed(1)}</Text>
+              <Text style={styles.impactScoreNum}>{SCORE_AFTER.toFixed(1)}</Text>
 
               <View style={styles.impactBarTrack}>
                 <Animated.View style={[
@@ -341,7 +264,7 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
                 ]} />
               </View>
 
-              <Text style={styles.impactCo2}>🌿 ~{DEMO_CO2} kg CO₂ saved this rental</Text>
+              <Text style={styles.impactCo2}>🌿 ~{CO2_SAVED} kg CO₂ saved this rental</Text>
             </View>
 
             <TouchableOpacity
@@ -353,23 +276,7 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
           </View>
         )}
 
-        {/* ── Step 4b: Alt ending — dispute reported on renter's side ── */}
-        {step === 'done' && phase === 'return' && altEnding && (
-          <View style={styles.doneWrap}>
-            <View style={[styles.celebIconRing, { backgroundColor: 'rgba(244,67,54,0.12)' }]}>
-              <TriangleAlert size={52} color={colors.danger} strokeWidth={1.8} />
-            </View>
-            <Text style={[styles.doneTitle, { color: colors.danger }]}>Issue Reported</Text>
-            <Text style={styles.doneSub}>
-              The lender has flagged a damage issue. Your funds are held in escrow until an admin resolves the dispute.
-            </Text>
-            <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.goBack()}>
-              <Text style={styles.primaryBtnText}>Done</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* ── Step 4c: Simple pickup done ── */}
+        {/* ── Step 4b: Simple pickup done ── */}
         {step === 'done' && phase === 'pickup' && (
           <View style={styles.doneWrap}>
             <View style={styles.celebIconRing}>
@@ -383,8 +290,7 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
           </View>
         )}
 
-        {/* Dispute entry lives on the scanner's checklist — hide here in theater */}
-        {step !== 'done' && !theaterMode && (
+        {step !== 'done' && (
           <TouchableOpacity style={styles.reportBtn} onPress={reportIssue}>
             <TriangleAlert size={16} color={colors.danger} />
             <Text style={styles.reportText}>Report an issue</Text>

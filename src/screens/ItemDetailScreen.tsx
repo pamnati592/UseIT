@@ -13,8 +13,6 @@ import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { ChevronLeft, ChevronRight, MapPin, Tag, ShoppingCart, Heart, MessageCircle, X, Leaf } from 'lucide-react-native';
 import { getImpactScore } from '../utils/format';
-import { useDemoContext } from '../contexts/DemoContext';
-import TapFlash from '../components/TapFlash';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const TODAY = new Date().toISOString().split('T')[0];
@@ -115,49 +113,6 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
   const [selectedEnd, setSelectedEnd] = useState<string | null>(prefilledEnd ?? null);
   const [blockedDates, setBlockedDates] = useState<Set<string>>(new Set());
   const [rentLoading, setRentLoading] = useState(false);
-
-  // Demo: when the script fires demoRentSignal — scroll to the bottom, visibly
-  // "tap" Rent, open the calendar, pick the dates, then close (the theater
-  // payment slide takes over).
-  const { demoState } = useDemoContext();
-  const scrollRef = useRef<ScrollView>(null);
-  const rentBtnScale = useRef(new Animated.Value(1)).current;
-  const [rentTapTs, setRentTapTs] = useState<number | null>(null);
-  const rentSignalTs = demoState.demoRentSignal?.ts ?? null;
-  useEffect(() => {
-    const signal = demoState.demoRentSignal;
-    if (!signal) return;
-    const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
-    let cancelled = false;
-
-    (async () => {
-      scrollRef.current?.scrollToEnd({ animated: true });
-      await sleep(1350);
-      if (cancelled) return;
-      // visible press on the Rent button
-      setRentTapTs(Date.now());
-      Animated.sequence([
-        Animated.timing(rentBtnScale, { toValue: 0.88, duration: 130, useNativeDriver: true }),
-        Animated.timing(rentBtnScale, { toValue: 1, duration: 160, useNativeDriver: true }),
-      ]).start();
-      await sleep(380);
-      if (cancelled) return;
-      openRentModal();
-      await sleep(1550);
-      if (cancelled) return;
-      setSelectedStart(signal.start);
-      setSelectedEnd(null);
-      await sleep(1200);
-      if (cancelled) return;
-      setSelectedEnd(signal.end);
-      // Close before the theater payment slide appears — iOS won't stack two native modals
-      await sleep(1900);
-      if (cancelled) return;
-      setRentModalVisible(false);
-    })();
-
-    return () => { cancelled = true; };
-  }, [rentSignalTs]);
 
   async function toggleWishlist() {
     setWishlistLoading(true);
@@ -333,7 +288,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
           <Text style={styles.backText}>Back</Text>
         </TouchableOpacity>
 
-        <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false}>
+        <ScrollView showsVerticalScrollIndicator={false}>
           {/* Photo gallery */}
           <View style={styles.galleryContainer}>
             {photos.length > 0 ? (
@@ -455,13 +410,10 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
 
             {/* Action buttons */}
             <View style={styles.actions}>
-              <Animated.View style={{ transform: [{ scale: rentBtnScale }] }}>
-                <TouchableOpacity style={styles.actionBtn} onPress={openRentModal}>
-                  <Tag size={18} color={colors.btnText} />
-                  <Text style={styles.actionBtnText}>Rent</Text>
-                  <TapFlash trigger={rentTapTs} style={{ alignSelf: 'center' }} />
-                </TouchableOpacity>
-              </Animated.View>
+              <TouchableOpacity style={styles.actionBtn} onPress={openRentModal}>
+                <Tag size={18} color={colors.btnText} />
+                <Text style={styles.actionBtnText}>Rent</Text>
+              </TouchableOpacity>
 
               {item.sale_price != null && (
                 <TouchableOpacity style={styles.actionBtn}>

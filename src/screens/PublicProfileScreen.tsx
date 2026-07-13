@@ -12,8 +12,6 @@ import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { ChevronLeft, ChevronRight, MapPin, Check, X } from 'lucide-react-native';
-import { useDemoContext } from '../contexts/DemoContext';
-import TapFlash from '../components/TapFlash';
 
 type Props = NativeStackScreenProps<HomeStackParamList, 'PublicProfile'>;
 
@@ -21,8 +19,6 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { userId, userName, approveTransactionId, requestSummary } = route.params;
-  const { demoState } = useDemoContext();
-  const demoTap = demoState.demoTapTarget;
   const [decideLoading, setDecideLoading] = useState(false);
   const [decided, setDecided] = useState<'approved' | 'declined' | null>(null);
 
@@ -166,10 +162,6 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
                         ? <ActivityIndicator color={colors.btnText} size="small" />
                         : <><Check size={16} color={colors.btnText} strokeWidth={2.5} /><Text style={styles.approveBtnText}>Approve</Text></>
                       }
-                      <TapFlash
-                        trigger={demoTap?.target === 'profile-approve' ? demoTap.ts : null}
-                        style={{ alignSelf: 'center' }}
-                      />
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.declineBtn, decideLoading && styles.btnDisabled]}

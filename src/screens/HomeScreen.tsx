@@ -15,7 +15,6 @@ import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { MapPin, X, Heart, Leaf } from 'lucide-react-native';
 import { getImpactScore } from '../utils/format';
-import { useDemoContext } from '../contexts/DemoContext';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.3;
@@ -77,28 +76,6 @@ export default function HomeScreen({ navigation }: Props) {
   useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
   useEffect(() => { navigationRef.current = navigation; }, [navigation]);
   useEffect(() => { setCurrentIndex(0); }, [query, selectedCategory]);
-
-  // Demo mode: react to category override signal
-  const { demoState } = useDemoContext();
-  useEffect(() => {
-    if (demoState.categoryOverride !== null) {
-      setSelectedCategory(demoState.categoryOverride);
-    }
-  }, [demoState.categoryOverride]);
-
-  // Demo mode: react to swipe signal — animate card only, DemoContext handles navigation
-  const lastSwipeTs = useRef(0);
-  useEffect(() => {
-    const sig = demoState.demoSwipeSignal;
-    if (!sig || sig.ts === lastSwipeTs.current) return;
-    lastSwipeTs.current = sig.ts;
-    const x = sig.dir === 'right' ? SCREEN_WIDTH : -SCREEN_WIDTH;
-    Animated.timing(position, { toValue: { x, y: 0 }, duration: 280, useNativeDriver: false }).start(() => {
-      // Position resets in the layout effect below, in the SAME frame the new
-      // card commits — resetting here would flash the old card back at center.
-      setCurrentIndex(prev => prev + 1);
-    });
-  }, [demoState.demoSwipeSignal]);
 
   // Snap the deck back to center in the same frame the promoted card renders,
   // so neither the old card (at center) nor the new card (off-screen) is ever
