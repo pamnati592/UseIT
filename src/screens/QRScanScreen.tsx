@@ -341,7 +341,7 @@ export default function QRScanScreen({ navigation, route }: Props) {
           {step === 'done' && (
             <View style={styles.doneWrap}>
               <View style={styles.doneIconRing}>
-                <CircleCheck size={52} color={colors.success} strokeWidth={1.8} />
+                <CircleCheck size={52} color="#22c55e" strokeWidth={1.8} />
               </View>
               <Text style={styles.doneTitle}>
                 {phase === 'pickup' ? 'Item Handed Over!' : 'Return Complete!'}
@@ -582,7 +582,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   doneWrap: { alignItems: 'center', gap: 14, marginTop: 24 },
   doneIconRing: {
     width: 88, height: 88, borderRadius: 44,
-    backgroundColor: 'rgba(76,217,100,0.12)',
+    backgroundColor: 'rgba(34,197,94,0.12)',
     alignItems: 'center', justifyContent: 'center',
   },
   doneTitle: { fontSize: 24, fontWeight: '800', color: colors.text, textAlign: 'center' },

@@ -372,7 +372,9 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
         {/* ── Step 4c: Simple pickup done ── */}
         {step === 'done' && phase === 'pickup' && (
           <View style={styles.doneWrap}>
-            <CircleCheck size={64} color={colors.success} />
+            <View style={styles.celebIconRing}>
+              <CircleCheck size={52} color="#22c55e" strokeWidth={1.8} />
+            </View>
             <Text style={styles.doneTitle}>Handoff Complete!</Text>
             <Text style={styles.doneSub}>The rental is now active.</Text>
             <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.goBack()}>
@@ -457,13 +459,13 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   waitingSub: { fontSize: 15, color: colors.textMuted, textAlign: 'center', lineHeight: 21 },
 
   // Celebration (return done)
-  celebWrap: { alignItems: 'center', gap: 16, marginTop: 8 },
+  celebWrap: { alignItems: 'center', gap: 14, marginTop: 8 },
   celebIconRing: {
     width: 88, height: 88, borderRadius: 44,
     backgroundColor: 'rgba(34,197,94,0.12)',
     alignItems: 'center', justifyContent: 'center',
   },
-  celebTitle: { fontSize: 26, fontWeight: '800', color: colors.text, textAlign: 'center' },
+  celebTitle: { fontSize: 24, fontWeight: '800', color: colors.text, textAlign: 'center' },
   celebSub: { fontSize: 15, color: colors.textMuted, textAlign: 'center', lineHeight: 21 },
 
   impactCard: {
@@ -485,9 +487,9 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   impactCo2: { fontSize: 13, color: colors.textMuted },
 
   // Simple pickup done
-  doneWrap: { alignItems: 'center', gap: 10, marginTop: 24 },
-  doneTitle: { fontSize: 22, fontWeight: '700', color: colors.text },
-  doneSub: { fontSize: 15, color: colors.textMuted, marginBottom: 12 },
+  doneWrap: { alignItems: 'center', gap: 14, marginTop: 24 },
+  doneTitle: { fontSize: 24, fontWeight: '800', color: colors.text, textAlign: 'center' },
+  doneSub: { fontSize: 15, color: colors.textMuted, textAlign: 'center', lineHeight: 21, marginBottom: 8 },
 
   // Shared
   primaryBtn: {
