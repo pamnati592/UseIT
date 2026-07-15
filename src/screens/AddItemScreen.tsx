@@ -29,6 +29,7 @@ export default function AddItemScreen() {
   const [description, setDescription] = useState('');
   const [dailyPrice, setDailyPrice] = useState('');
   const [cityValue, setCityValue] = useState<CityValue | null>(null);
+  const [pickupLocation, setPickupLocation] = useState('');
   const [forSale, setForSale] = useState(false);
   const [salePrice, setSalePrice] = useState('');
   const [verificationPhoto, setVerificationPhoto] = useState<PhotoAsset | null>(null);
@@ -168,6 +169,7 @@ export default function AddItemScreen() {
         verification_image_url: verificationUrl,
         photos: photoUrls,
         location: `POINT(${cityValue!.lng} ${cityValue!.lat})`,
+        pickup_location: pickupLocation.trim() || null,
       });
 
       if (error) throw error;
@@ -179,7 +181,7 @@ export default function AddItemScreen() {
           : 'Your item is pending review.',
       );
       setTitle(''); setCategory(''); setDescription('');
-      setDailyPrice(''); setCityValue(null);
+      setDailyPrice(''); setCityValue(null); setPickupLocation('');
       setForSale(false); setSalePrice('');
       setVerificationPhoto(null); setItemPhotos([]);
     } catch (e: any) {
@@ -227,6 +229,15 @@ export default function AddItemScreen() {
 
           <Text style={styles.label}>City *</Text>
           <CityPicker value={cityValue} onChange={setCityValue} placeholder="Choose city" />
+
+          <Text style={styles.label}>Pickup location (optional)</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g. Dizengoff Square, near the fountain"
+            placeholderTextColor={colors.textFaint}
+            value={pickupLocation}
+            onChangeText={setPickupLocation}
+          />
 
           <View style={styles.toggleRow}>
             <Text style={styles.label}>Also available for sale</Text>

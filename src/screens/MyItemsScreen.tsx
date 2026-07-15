@@ -31,6 +31,7 @@ type ItemRow = {
   sale_price: number | null;
   city: string | null;
   photos: string[] | null;
+  pickup_location: string | null;
   verification_status: string;
   is_hidden: boolean;
   bookings: Booking[];
@@ -63,7 +64,7 @@ export default function MyItemsScreen({ navigation }: Props) {
     const [itemsRes, txRes] = await Promise.all([
       supabase
         .from('items')
-        .select('id, owner_id, title, category, description, daily_price, sale_price, city, photos, verification_status, is_hidden')
+        .select('id, owner_id, title, category, description, daily_price, sale_price, city, photos, pickup_location, verification_status, is_hidden')
         .eq('owner_id', user.id)
         .order('created_at', { ascending: false }),
       supabase
@@ -150,6 +151,7 @@ export default function MyItemsScreen({ navigation }: Props) {
                     sale_price: item.sale_price,
                     city: item.city,
                     photos: item.photos,
+                    pickup_location: item.pickup_location,
                   }})}
                 >
                   <View style={styles.emoji}>

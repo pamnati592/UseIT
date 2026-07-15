@@ -342,7 +342,6 @@ You are a Senior Product Manager and Full-Stack Software Architect with expertis
 | Video Chat | High technical complexity; text chat is sufficient |
 | Delivery services (lockers, Wolt) | Requires external integrations and business model change |
 | Multiple language support | First version targets local market (Hebrew/English) |
-| Impact Score | Deferred to future version after market feedback |
 | Offline Mode | High infrastructure complexity; core features require network |
 
 ---

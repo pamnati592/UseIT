@@ -11,11 +11,12 @@ import { supabase } from '../services/supabase';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
-import { ChevronLeft, ChevronRight, MapPin, Tag, ShoppingCart, Heart, MessageCircle, X, Leaf } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, MapPin, Tag, ShoppingCart, Heart, MessageCircle, X, Leaf, Star } from 'lucide-react-native';
 import { getImpactScore } from '../utils/format';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const TODAY = new Date().toISOString().split('T')[0];
+const STAR_COLOR = '#f59e0b';
 
 type Props = NativeStackScreenProps<HomeStackParamList, 'ItemDetail'>;
 
@@ -81,6 +82,8 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [wishlisted, setWishlisted] = useState(false);
   const [wishlistLoading, setWishlistLoading] = useState(false);
+  const [itemRating, setItemRating] = useState<{ avg: number; count: number } | null>(null);
+  const [pickupLocation, setPickupLocation] = useState<string | null>(null);
 
   const [rentModalVisible, setRentModalVisible] = useState(!!(prefilledStart || openRent));
 
@@ -108,6 +111,17 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
         .maybeSingle()
         .then(({ data }) => setWishlisted(!!data));
     });
+    supabase
+      .from('items')
+      .select('avg_rating, review_count, pickup_location')
+      .eq('id', item.id)
+      .single()
+      .then(({ data }) => {
+        if (data && (data as any).review_count > 0) {
+          setItemRating({ avg: (data as any).avg_rating, count: (data as any).review_count });
+        }
+        if (data) setPickupLocation((data as any).pickup_location ?? null);
+      });
   }, []);
   const [selectedStart, setSelectedStart] = useState<string | null>(prefilledStart ?? null);
   const [selectedEnd, setSelectedEnd] = useState<string | null>(prefilledEnd ?? null);
@@ -360,6 +374,15 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
               )}
             </View>
 
+            {itemRating && (
+              <View style={styles.itemRatingRow}>
+                <Star size={15} color={STAR_COLOR} fill={STAR_COLOR} strokeWidth={1.8} />
+                <Text style={styles.itemRatingText}>
+                  {itemRating.avg.toFixed(1)} · {itemRating.count} review{itemRating.count > 1 ? 's' : ''}
+                </Text>
+              </View>
+            )}
+
             <View style={styles.tagRow}>
               <View style={styles.tag}>
                 <Text style={styles.tagText}>{item.category}</Text>
@@ -371,6 +394,16 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
                 </View>
               )}
             </View>
+
+            {pickupLocation && (
+              <View style={styles.pickupRow}>
+                <MapPin size={15} color={colors.textSecondary} strokeWidth={2} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.pickupLabel}>Pickup location</Text>
+                  <Text style={styles.pickupText}>{pickupLocation}</Text>
+                </View>
+              </View>
+            )}
 
             {/* Impact Score */}
             {(() => {
@@ -548,6 +581,16 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   metaRow: { flexDirection: 'row', alignItems: 'baseline', gap: 16 },
   price: { fontSize: 22, fontWeight: 'bold', color: colors.text },
   salePrice: { fontSize: 14, color: colors.textMuted },
+
+  itemRatingRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  itemRatingText: { fontSize: 13, color: colors.textSecondary, fontWeight: '600' },
+
+  pickupRow: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    backgroundColor: colors.surface, borderRadius: 10, padding: 12,
+  },
+  pickupLabel: { fontSize: 11, color: colors.textFaint, marginBottom: 1 },
+  pickupText: { fontSize: 13.5, color: colors.textSecondary, lineHeight: 18 },
 
   tagRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   tag: {

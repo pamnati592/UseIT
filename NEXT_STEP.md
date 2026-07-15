@@ -2,22 +2,9 @@
 
 ## Resume here
 
-**Context:** the local Supabase MCP server's access token in `~/.claude.json` was a masked/redacted value by mistake (`sbp_c179••••90c9`) instead of a real personal access token. It's been replaced with a real one, and the connection has now been **verified working** (2026-07-13): `list_projects` and `list_tables` both succeeded. The project had also gone `INACTIVE` (auto-paused) and was restored via `restore_project` — it's back to `ACTIVE_HEALTHY`.
+**Context:** DB access via Supabase MCP is confirmed live (verified 2026-07-13, project `ACTIVE_HEALTHY`) — no need to re-verify at the start of a session.
 
-**Schema check done for item M (2026-07-13):**
-- `profiles.lender_score` and `profiles.renter_score` **already exist** (`double precision`, default `0`) — no migration needed for those two columns.
-- **No `ratings` table exists yet** — confirms it needs to be created from scratch as planned below.
-- Rest of the schema (`items`, `transactions`, `conversations`, `messages`, `item_blocked_dates`, `wishlist`) matches what's documented, no surprises.
-- Minor note: `public.spatial_ref_sys` (PostGIS system table) has RLS disabled — standard/low-risk, not app data, not something to fix as part of M.
-
-**What to do next:**
-1. DB access is confirmed live — no need to re-verify at the start of the next session.
-2. Pick up backlog item **M — Post-rental rating prompt** (see Backlog below). `RatingScreen` UI already exists and is fully wired for stars + review text, but the Submit button is currently a **local-only no-op** — it doesn't write anything to the database. This is the natural next step right after the QR handoff flow. Work has **not started** on M yet — schema was only inspected, nothing written.
-3. We agreed to work through the backlog **one item at a time, in priority order**, verifying each before moving to the next — don't batch multiple backlog items into one session without checking in.
-
-## What to build next: Rating persistence (M)
-
-QR code transfer & return (H) is now complete and demo/theater-mode code has been fully removed from the codebase (see "Done" below for both). GPS / Location-based feed (G) was completed earlier.
+**⚠️ Not yet tested end-to-end: the QR handoff role-flip (2026-07-15).** We changed who displays vs. scans the QR at each phase (see "Done" below), plus condition-checklist gating. This has **not been tested on two real devices yet** — the simulator can't validate two independent GPS positions + two independent logins interacting with each other, and the proximity check (50m) plus the phase-dependent RPC permission checks (`ensure_qr_token` / `scan_qr_handoff`) are exactly the kind of thing that looks right in code but needs a live two-party test to be sure. Plan: build dev clients on an iPhone and an old Galaxy Android device (`npx expo run:ios --device` / `npx expo run:android --device`, both on the same Wi-Fi as Metro), log in as two different test accounts, run a rental through pending → approved → paid → pickup QR → active → return QR → completed, and confirm the right party sees "show QR" vs "scan QR" at each phase.
 
 ---
 
@@ -51,13 +38,10 @@ When you build the QR flow, wire any status change (item handed over, item retur
 
 # Backlog
 
-### M. Post-rental rating prompt ⬅ immediate next priority
-- `RatingScreen` (src/screens/RatingScreen.tsx) already has the full UI — stars, review text, submit button, success state — but `onPress={() => setSubmitted(true)}` is a **local-only no-op**. Nothing is persisted.
-- **First: check whether `profiles.lender_score` / `profiles.renter_score` and a `ratings` table already exist** (no migration currently defines them — verify live via Supabase MCP before assuming).
-- If missing, create a `ratings` table: `(id, reviewer_id, reviewee_id, transaction_id, score, comment, created_at)`.
-- Wire the Submit button to an RPC (e.g. `submit_rating`) that inserts the row and recomputes the reviewee's `lender_score`/`renter_score` average.
-- Currently `RatingScreen` is only reachable from the QR return-done celebration (`QRDisplayScreen` / `QRScanScreen` → "Rate the Experience"). Per the SAS rule, keep it that way — don't add a second rating entry point elsewhere.
-- Also confirms/replaces the currently-hardcoded "Impact Score" numbers shown on the QR done screens (`SCORE_AFTER = 4.0`, `CO2_SAVED = '3.5'` in QRDisplayScreen.tsx, and the hardcoded `4.4` in QRScanScreen.tsx) — those were demo placeholders and should eventually reflect the real score.
+### R. Real Impact Score formula
+- User confirmed (2026-07-14): they want a genuine formula eventually, not the hardcoded placeholder — but explicitly said not to build it now, just track it here.
+- Context: `QRDisplayScreen`/`QRScanScreen` currently show a hardcoded "Impact Score" (0–5 number + CO₂ stat) on the return-done screen — conflates the real Trust Score (now live via M's `lender_score`/`renter_score`) with an undefined environmental metric.
+- Discussed direction (not yet decided): short-term swap those screens to show the real trust score instead of the fake number (cheap, reuses M); a real CO2-based formula would need a category → emissions-avoided data table and is explicitly listed as Out of Scope for MVP in CLAUDE.md section 6 ("Impact Score — deferred to future version after market feedback") — worth a deliberate product decision before building.
 
 ### N. Retroactive rental scoring (reputation bootstrap)
 - Both sides (lender and renter) have a history of past rentals. After each `completed` transaction, the system should look back at the full history for both parties and recompute their scores (weighted recency — more recent rentals count more).
@@ -65,14 +49,11 @@ When you build the QR flow, wire any status change (item handed over, item retur
 - For renters: factors are on-time return, item care (no disputes), cancellation rate.
 - This should run as a Supabase DB function / RPC triggered on every rating insert, so scores stay live without a separate cron job.
 - Display the score badge and total-review count on `PublicProfileScreen` (already shown, just needs real data).
+- `lender_cancellations` counter on `profiles` → deduct from lender score, show warning badge on public profile after threshold (not yet scoped anywhere else — fold in here).
 
 ### C. Buy option
 - Toggle on item upload: "Also available for purchase" + sale price
 - "Buy" button on swipe panel + Item Detail (currently a no-op placeholder)
-
-### D. Rating system (duplicate of M — merge notes when implementing)
-- Same scope as M above. Additional detail from this entry: lender score factors = item condition accuracy, response speed, cancellation history; renter score factors = return time, item care.
-- `lender_cancellations` counter on `profiles` → deduct from lender score, show warning badge on public profile after threshold (not yet scoped in M — fold in here).
 
 ### E. Feed ranking algorithm (beyond distance)
 - Current `get_feed` ranks by distance only. Extend the weighted formula with: lender score, interest match (intersect `profiles.interests` with `items.category`/tags), recency.
@@ -110,6 +91,12 @@ When you build the QR flow, wire any status change (item handed over, item retur
 - SAS rule: the actual item-save logic must go through the same path as the existing "Save" button in `AddItemScreen` — no parallel write path.
 - Edge cases to handle: model returns no items (show error toast), model times out after 5s (fall back to manual form), user denies camera permission (standard permission flow already used by AddItemScreen).
 
+### S. AI auto-fill single item fields from photo
+- User request (2026-07-14): when adding a single item in `AddItemScreen`, let AI analyze the photo just taken/picked and auto-fill the form fields (name, category, description, suggested daily price) instead of the user typing them manually.
+- Distinct from **Q** above: Q is "one photo of a pile of objects → multiple detected items"; this is the normal one-item-at-a-time add flow — take/pick the item's own photo(s), AI suggests the fields for that one item, user reviews/edits before saving.
+- Likely shares the same vision-model call as Q (same prompt style, single-item case just uses the first/only detected object) — worth designing them together so the extraction logic isn't duplicated.
+- SAS rule: still saves through the same existing "Save" path in `AddItemScreen` — AI only pre-fills form fields, it doesn't introduce a second save/write path.
+
 ### P. Refactor chatBus into a single Supabase realtime listener
 - Currently: `useUnreadCount` and `ChatRoomScreen` each have their own independent Supabase listeners, and `chatBus` is only used to signal "marked as read"
 - Goal: move the Supabase realtime connection into `chatBus` so it becomes the single listener for all incoming messages
@@ -142,3 +129,12 @@ When you build the QR flow, wire any status change (item handed over, item retur
 - **Badge Jump** — all 4 rental steps covered (request → approval → payment → cancellation); fixed null last_read bug for first-time conversations
 - **Item tap in My Items** — tapping card header navigates to ItemDetailScreen within ProfileStack
 - **Profile picture** — tap avatar in own profile to set/change photo; stored in `profiles.avatar_url`
+- **M. Post-rental rating persistence (2026-07-14)** — `ratings` table + `submit_rating` RPC (recomputes reviewee's `lender_score`/`renter_score`); `RatingScreen` Submit button now actually writes instead of being a local no-op.
+- **Item reviews (2026-07-14)** — new `item_reviews` table + `submit_item_review` RPC (renter-only, requires completed transaction) + `items.avg_rating`/`review_count` rollup. `RatingScreen` shows a second star row ("How was the {item}?") for the renter only, submits both in one action. `ItemDetailScreen` shows a small `★ 4.5 · 3 reviews` line once an item has reviews.
+- **ChatRoomScreen Rental tab redesign (2026-07-14/15)**:
+  - Status-change system messages (approve/pay/cancel/etc.) no longer render as separate chat bubbles — only the rental-request card per transaction shows, now styled as a status board (date/price header + colored status pill) instead of a chat bubble, with a plain-language role-aware caption per status (e.g. lender sees "Approved — waiting for {renter} to pay", renter sees "Approved — pay within 24 hours").
+  - Item photo avatar added next to the other party's name in the chat header (falls back to category icon).
+  - Badge Jump fixed to highlight/scroll to the status card (not a hidden message) when a status-change badge is tapped.
+  - Fixed a pre-existing navigation bug: 3 spots used `getParent()?.getParent()?.navigate(...)` which overshot past the Tab Navigator to the root auth stack (which doesn't have `HomeStack`/`Profile`) — root cause was `RootNavigator` wrapping the tab navigator in a `Stack.Screen name="MainApp"`, so only **one** `getParent()` is needed. Also fixed the same wrong-tab-name bug (`'Home'` → `'HomeStack'`) in `WishlistScreen`.
+- **QR handoff role flip (2026-07-15)** — whoever currently holds the item now displays the QR; whoever is receiving it scans + verifies condition. Pickup: lender displays / renter scans (was backwards before — renter always displayed, lender always scanned, regardless of phase). Return: renter displays / lender scans (unchanged, was already correct). `ensure_qr_token`/`scan_qr_handoff` RPCs now enforce phase-dependent roles server-side. Condition checklist simplified to scanner-only (`QRDisplayScreen` no longer has a checklist/photo step — displayer just shows the QR). **Not yet tested on two real devices** (see "Resume here" above).
+- **Meeting Point redesign (2026-07-15)** — replaced the fully-fake `MeetingPointScreen` (hardcoded "Dizengoff Square", drawn fake map, fake confirm flow) with a real `items.pickup_location` field the lender sets in Add/Edit Item, shown on `ItemDetailScreen` and as a read-only card + "Get Directions" button in `MeetingPointScreen`. Parties can still arrange a different spot via chat — no in-app negotiation mechanism.

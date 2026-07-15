@@ -108,13 +108,13 @@ export default function QRScanScreen({ navigation, route }: Props) {
     try {
       const coords = await getCurrentLocationOnce();
       if (!coords) {
-        Alert.alert('Location needed', 'Enable location to verify you are with the renter.');
+        Alert.alert('Location needed', `Enable location to verify you are with ${otherName ?? 'the other party'}.`);
         handledRef.current = false;
         return;
       }
       const distance = metersBetween(coords, { latitude: payload.lat, longitude: payload.lng });
       if (distance > PROXIMITY_LIMIT_M) {
-        Alert.alert('Too far apart', `You must be within ${PROXIMITY_LIMIT_M}m of the renter (currently ~${Math.round(distance)}m).`);
+        Alert.alert('Too far apart', `You must be within ${PROXIMITY_LIMIT_M}m of ${otherName ?? 'the other party'} (currently ~${Math.round(distance)}m).`);
         handledRef.current = false;
         return;
       }
@@ -268,7 +268,7 @@ export default function QRScanScreen({ navigation, route }: Props) {
               {phase === 'return' ? (
                 <TouchableOpacity
                   style={styles.primaryBtn}
-                  onPress={() => navigation.navigate('Rating', { itemTitle, otherName: otherName ?? 'them' })}
+                  onPress={() => navigation.navigate('Rating', { transactionId, itemTitle, otherName: otherName ?? 'them', isRenter: false })}
                 >
                   <Text style={styles.primaryBtnText}>Rate the Experience</Text>
                 </TouchableOpacity>

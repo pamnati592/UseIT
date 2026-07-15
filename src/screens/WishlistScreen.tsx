@@ -63,7 +63,7 @@ export default function WishlistScreen() {
     return (
       <TouchableOpacity
         style={styles.card}
-        onPress={() => (navigation as any).navigate('Home', {
+        onPress={() => (navigation as any).navigate('HomeStack', {
           screen: 'ItemDetail',
           params: { item },
         })}

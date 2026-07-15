@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo} from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, type ListRenderItemInfo,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, Image, type ListRenderItemInfo,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStripe } from '@stripe/stripe-react-native';
@@ -11,10 +11,24 @@ import { supabase } from '../services/supabase';
 import { chatBus } from '../services/chatBus';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
+import { CategoryIcon } from '../components/CategoryIcon';
 import {
   Check, X, CreditCard, Clock, ChevronLeft, Package, Calendar, MessageCircle, ClipboardList, ArrowUp,
   ScanLine, QrCode, CircleCheck, TriangleAlert, MapPin, MessageSquare, Scale, UserRound,
 } from 'lucide-react-native';
+
+// Status label/color shown on the rental-request card's status pill — the card
+// itself is the single live status board for that date range (see requestCard).
+const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
+  pending:   { label: 'Pending',   color: '#b45309', bg: 'rgba(245,158,11,0.15)' },
+  approved:  { label: 'Approved',  color: '#15803d', bg: 'rgba(34,197,94,0.15)' },
+  paid:      { label: 'Paid',      color: '#1d4ed8', bg: 'rgba(59,130,246,0.15)' },
+  active:    { label: 'Active',    color: '#15803d', bg: 'rgba(34,197,94,0.15)' },
+  completed: { label: 'Completed', color: '#6b7280', bg: 'rgba(107,114,128,0.15)' },
+  rejected:  { label: 'Declined',  color: '#b91c1c', bg: 'rgba(239,68,68,0.15)' },
+  disputed:  { label: 'Disputed',  color: '#b91c1c', bg: 'rgba(239,68,68,0.15)' },
+  cancelled: { label: 'Cancelled', color: '#6b7280', bg: 'rgba(107,114,128,0.15)' },
+};
 
 type Message = {
   id: string;
@@ -56,6 +70,9 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [convInfo, setConvInfo] = useState<ConversationInfo | null>(null);
+  const [itemPhotoUrl, setItemPhotoUrl] = useState<string | null>(null);
+  const [itemCategory, setItemCategory] = useState<string>('other');
+  const [pickupLocation, setPickupLocation] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<Record<string, Transaction>>({});
   const [actionLoading, setActionLoading] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
@@ -96,7 +113,16 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       if (!mounted) return;
       const msgs = (messagesRes.data ?? []) as Message[];
       if (msgs.length) setMessages(msgs);
-      if (convRes.data) setConvInfo(convRes.data as ConversationInfo);
+      if (convRes.data) {
+        setConvInfo(convRes.data as ConversationInfo);
+        const itemId = (convRes.data as ConversationInfo).item_id;
+        supabase.from('items').select('photos, category, pickup_location').eq('id', itemId).single().then(({ data }) => {
+          if (!mounted || !data) return;
+          setItemPhotoUrl((data as any).photos?.[0] ?? null);
+          setItemCategory((data as any).category ?? 'other');
+          setPickupLocation((data as any).pickup_location ?? null);
+        });
+      }
 
       const map: Record<string, Transaction> = {};
       (txRes.data as Transaction[] ?? []).forEach(tx => { map[tx.id] = tx; });
@@ -184,11 +210,28 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     const ts = new Date(highlightAfterTimestamp).getTime();
     const newestUnread = messages.find(m => new Date(m.created_at).getTime() > ts);
     if (!newestUnread) return;
-    if (newestUnread.transaction_id) setActiveTab('rental');
-    setTimeout(() => {
-      setHighlightedMessageId(newestUnread.id);
-      setTimeout(() => setHighlightedMessageId(null), 1200);
-    }, 150);
+
+    if (newestUnread.transaction_id) {
+      // Status-change system messages (approve/pay/cancel/etc.) aren't rendered
+      // as separate bubbles anymore — the rental-request card for this
+      // transaction is the live status board, so highlight/scroll to that instead.
+      setActiveTab('rental');
+      const rentalMsgs = messages.filter(m => !!m.transaction_id && m.content.startsWith(RENTAL_REQUEST_PREFIX));
+      const idx = rentalMsgs.findIndex(m => m.transaction_id === newestUnread.transaction_id);
+      if (idx >= 0) {
+        const cardId = rentalMsgs[idx].id;
+        setTimeout(() => {
+          flatListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.4 });
+          setHighlightedMessageId(cardId);
+          setTimeout(() => setHighlightedMessageId(null), 1200);
+        }, 350);
+      }
+    } else {
+      setTimeout(() => {
+        setHighlightedMessageId(newestUnread.id);
+        setTimeout(() => setHighlightedMessageId(null), 1200);
+      }, 150);
+    }
   }, [loading]);
 
   async function markAsRead(userId: string) {
@@ -227,6 +270,12 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     const fmt = (iso: string) =>
       new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
     return `${fmt(tx.start_date)} → ${fmt(tx.end_date)}`;
+  }
+
+  function daysBetweenTx(tx: Transaction): number {
+    const a = new Date(tx.start_date);
+    const b = new Date(tx.end_date);
+    return Math.round((b.getTime() - a.getTime()) / 86_400_000) + 1;
   }
 
   function canCancelTx(tx: Transaction): boolean {
@@ -427,8 +476,13 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
         tx.status === 'approved' &&
         !(tx.approved_at && Date.now() - new Date(tx.approved_at).getTime() > 86_400_000)
       ).length;
+  // Rental tab shows only the rental-request card per transaction — it's the single
+  // live status board for that date range. Status-change system messages (approve/
+  // pay/cancel/etc.) still get inserted for badges/realtime, they just aren't rendered.
   const filteredMessages = messages.filter(m =>
-    activeTab === 'rental' ? !!m.transaction_id : !m.transaction_id
+    activeTab === 'rental'
+      ? !!m.transaction_id && m.content.startsWith(RENTAL_REQUEST_PREFIX)
+      : !m.transaction_id
   );
 
   // When messages lack transaction_id (RPC deployed before column existed),
@@ -452,104 +506,131 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
 
     if (isRentalRequest) {
       const tx = findTxForMessage(msg);
+      const statusMeta = tx ? STATUS_META[tx.status] : null;
       return (
         <View style={[styles.requestCard, msg.id === highlightedMessageId && styles.highlighted]}>
-          <Text style={styles.requestText}>{msg.content}</Text>
+          <View style={styles.requestHeader}>
+            <View style={styles.requestHeaderLeft}>
+              <Calendar size={16} color={colors.primary} strokeWidth={2.2} />
+              <Text style={styles.requestDateText} numberOfLines={1}>
+                {tx ? formatDateRange(tx) : msg.content}
+              </Text>
+            </View>
+            {statusMeta && (
+              <View style={[styles.requestStatusPill, { backgroundColor: statusMeta.bg }]}>
+                <Text style={[styles.requestStatusPillText, { color: statusMeta.color }]}>{statusMeta.label}</Text>
+              </View>
+            )}
+          </View>
+          {tx && (
+            <Text style={styles.requestSubText}>
+              {daysBetweenTx(tx)} day{daysBetweenTx(tx) > 1 ? 's' : ''} · ₪{tx.total_price}
+            </Text>
+          )}
 
           {tx && (
             <View style={styles.requestStatus}>
-              {tx.status === 'pending' && isLender && (
-                <>
-                  <View style={styles.requestActions}>
+              {tx.status === 'pending' && (
+                isLender ? (
+                  <>
+                    <View style={styles.requestActions}>
+                      <TouchableOpacity
+                        style={[styles.approveBtn, actionLoading && styles.btnDisabled]}
+                        onPress={() => handleApprove(tx.id)}
+                        disabled={actionLoading}
+                      >
+                        {actionLoading
+                          ? <ActivityIndicator color={colors.btnText} size="small" />
+                          : <><Check size={16} color={colors.btnText} strokeWidth={2.5} /><Text style={styles.approveBtnText}>Approve</Text></>
+                        }
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.rejectBtn, actionLoading && styles.btnDisabled]}
+                        onPress={() => handleReject(tx.id)}
+                        disabled={actionLoading}
+                      >
+                        <X size={16} color={colors.textSecondary} strokeWidth={2.5} />
+                        <Text style={styles.rejectBtnText}>Decline</Text>
+                      </TouchableOpacity>
+                    </View>
                     <TouchableOpacity
-                      style={[styles.approveBtn, actionLoading && styles.btnDisabled]}
-                      onPress={() => handleApprove(tx.id)}
-                      disabled={actionLoading}
+                      style={styles.viewProfileBtn}
+                      onPress={() => {
+                        if (!convInfo) return;
+                        (navigation as any).getParent()?.navigate('HomeStack', {
+                          screen: 'PublicProfile',
+                          params: {
+                            userId: convInfo.renter_id,
+                            userName: otherUserName,
+                            approveTransactionId: tx.id,
+                            requestSummary: msg.content,
+                          },
+                        });
+                      }}
                     >
-                      {actionLoading
-                        ? <ActivityIndicator color={colors.btnText} size="small" />
-                        : <><Check size={16} color={colors.btnText} strokeWidth={2.5} /><Text style={styles.approveBtnText}>Approve</Text></>
-                      }
+                      <UserRound size={15} color={colors.primary} strokeWidth={2} />
+                      <Text style={styles.viewProfileText}>View {otherUserName}'s profile</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.rejectBtn, actionLoading && styles.btnDisabled]}
-                      onPress={() => handleReject(tx.id)}
-                      disabled={actionLoading}
-                    >
-                      <X size={16} color={colors.textSecondary} strokeWidth={2.5} />
-                      <Text style={styles.rejectBtnText}>Decline</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.viewProfileBtn}
-                    onPress={() => {
-                      if (!convInfo) return;
-                      (navigation as any).getParent()?.getParent()?.navigate('Home', {
-                        screen: 'PublicProfile',
-                        params: {
-                          userId: convInfo.renter_id,
-                          userName: otherUserName,
-                          approveTransactionId: tx.id,
-                          requestSummary: msg.content,
-                        },
-                      });
-                    }}
-                  >
-                    <UserRound size={15} color={colors.primary} strokeWidth={2} />
-                    <Text style={styles.viewProfileText}>View {otherUserName}'s profile</Text>
-                  </TouchableOpacity>
-                </>
+                  </>
+                ) : (
+                  <Text style={styles.helperText}>⏳ Waiting for {otherUserName} to respond to your request.</Text>
+                )
               )}
               {tx.status === 'approved' && (
-                <View style={styles.approvedRow}>
-                  <View style={styles.statusChip}><Check size={15} color={colors.success} strokeWidth={2.5} /><Text style={styles.statusApproved}>Approved</Text></View>
-                  {!isLender && (
-                    tx.approved_at && Date.now() - new Date(tx.approved_at).getTime() > 86_400_000
-                      ? <View style={styles.statusChip}><Clock size={15} color={colors.warning} /><Text style={styles.statusExpired}>Time exceeded</Text></View>
-                      : (
-                        <TouchableOpacity
-                          style={[styles.payBtn, payLoading && styles.btnDisabled]}
-                          onPress={() => handlePay(tx.id)}
-                          disabled={payLoading}
-                        >
-                          {payLoading
-                            ? <ActivityIndicator color={colors.btnText} size="small" />
-                            : <><CreditCard size={16} color={colors.btnText} /><Text style={styles.payBtnText}>Pay Now</Text></>
-                          }
-                        </TouchableOpacity>
-                      )
-                  )}
-                  {isLender && canCancelTx(tx) && (
-                    <TouchableOpacity
-                      style={[styles.cancelRentalBtn, actionLoading && styles.btnDisabled]}
-                      onPress={() => handleCancel(tx.id)}
-                      disabled={actionLoading}
-                    >
-                      <Text style={styles.cancelRentalBtnText}>Cancel</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
+                !isLender ? (
+                  tx.approved_at && Date.now() - new Date(tx.approved_at).getTime() > 86_400_000 ? (
+                    <View style={styles.statusChip}><Clock size={15} color={colors.warning} /><Text style={styles.statusExpired}>Time exceeded — request expired</Text></View>
+                  ) : (
+                    <>
+                      <Text style={styles.helperText}>Approved — pay within 24 hours to confirm your rental.</Text>
+                      <TouchableOpacity
+                        style={[styles.payBtn, payLoading && styles.btnDisabled]}
+                        onPress={() => handlePay(tx.id)}
+                        disabled={payLoading}
+                      >
+                        {payLoading
+                          ? <ActivityIndicator color={colors.btnText} size="small" />
+                          : <><CreditCard size={16} color={colors.btnText} /><Text style={styles.payBtnText}>Pay Now</Text></>
+                        }
+                      </TouchableOpacity>
+                    </>
+                  )
+                ) : (
+                  <View style={styles.approvedRow}>
+                    <Text style={[styles.helperText, styles.helperTextFlex]}>Approved — waiting for {otherUserName} to pay.</Text>
+                    {canCancelTx(tx) && (
+                      <TouchableOpacity
+                        style={[styles.cancelRentalBtn, actionLoading && styles.btnDisabled]}
+                        onPress={() => handleCancel(tx.id)}
+                        disabled={actionLoading}
+                      >
+                        <Text style={styles.cancelRentalBtnText}>Cancel</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )
               )}
               {tx.status === 'paid' && (
                 <View style={styles.handoffBlock}>
-                  <View style={styles.statusChip}><CreditCard size={15} color={colors.primary} /><Text style={styles.statusActive}>Paid · awaiting pickup</Text></View>
+                  <Text style={styles.helperText}>
+                    {isLender
+                      ? `Payment received — you still have the item, so show this QR to ${otherUserName} when you hand it over.`
+                      : `Payment received — scan ${otherUserName}'s QR when you pick up the item, then confirm its condition.`}
+                  </Text>
                   <TouchableOpacity
                     style={styles.meetingBtn}
-                    onPress={() => navigation.navigate('MeetingPoint', {
-                      renterName: isLender ? otherUserName : currentUserName,
-                      lenderName: isLender ? currentUserName : otherUserName,
-                    })}
+                    onPress={() => navigation.navigate('MeetingPoint', { pickupLocation, itemTitle })}
                   >
                     <MapPin size={16} color={colors.primary} />
-                    <Text style={styles.meetingBtnText}>Set Meeting Point</Text>
+                    <Text style={styles.meetingBtnText}>Meeting Point</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.qrActionBtn}
-                    onPress={() => navigation.navigate(isLender ? 'QRScan' : 'QRDisplay', { transactionId: tx.id, phase: 'pickup', itemTitle })}
+                    onPress={() => navigation.navigate(isLender ? 'QRDisplay' : 'QRScan', { transactionId: tx.id, phase: 'pickup', itemTitle })}
                   >
                     {isLender
-                      ? <><ScanLine size={16} color={colors.btnText} /><Text style={styles.qrActionText}>Scan to Hand Off</Text></>
-                      : <><QrCode size={16} color={colors.btnText} /><Text style={styles.qrActionText}>Show Pickup QR</Text></>}
+                      ? <><QrCode size={16} color={colors.btnText} /><Text style={styles.qrActionText}>Show Pickup QR</Text></>
+                      : <><ScanLine size={16} color={colors.btnText} /><Text style={styles.qrActionText}>Scan to Receive</Text></>}
                   </TouchableOpacity>
                   <View style={styles.handoffSecondary}>
                     {isLender && canCancelTx(tx) && (
@@ -565,7 +646,11 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
               )}
               {tx.status === 'active' && (
                 <View style={styles.handoffBlock}>
-                  <View style={styles.statusChip}><CircleCheck size={15} color={colors.success} /><Text style={styles.statusActive}>In progress</Text></View>
+                  <Text style={styles.helperText}>
+                    {isLender
+                      ? `Rental is active — scan ${otherUserName}'s QR when they return the item.`
+                      : `Rental is active — show this QR when you return the item.`}
+                  </Text>
                   <TouchableOpacity
                     style={styles.qrActionBtn}
                     onPress={() => navigation.navigate(isLender ? 'QRScan' : 'QRDisplay', { transactionId: tx.id, phase: 'return', itemTitle })}
@@ -580,18 +665,21 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                 </View>
               )}
               {tx.status === 'completed' && (
-                <View style={styles.statusChip}><Check size={15} color={colors.success} strokeWidth={2.5} /><Text style={styles.statusCompleted}>Completed</Text></View>
+                <Text style={styles.helperText}>✅ This rental has been completed.</Text>
               )}
               {tx.status === 'rejected' && (
-                <View style={styles.statusChip}><X size={15} color={colors.danger} strokeWidth={2.5} /><Text style={styles.statusRejected}>Declined</Text></View>
+                <Text style={styles.helperText}>❌ This request was declined.</Text>
               )}
               {tx.status === 'disputed' && (
-                <View style={styles.statusChip}><TriangleAlert size={15} color={colors.danger} /><Text style={styles.statusRejected}>Disputed — under review</Text></View>
+                <Text style={styles.helperText}>⚠️ This rental is under review by UseIT support.</Text>
+              )}
+              {tx.status === 'cancelled' && (
+                <Text style={styles.helperText}>⚠️ This rental was cancelled — refund processed per policy.</Text>
               )}
             </View>
           )}
 
-          <Text style={styles.requestTime}>{formatTime(msg.created_at)}</Text>
+          <Text style={styles.requestTime}>Requested {formatTime(msg.created_at)}</Text>
         </View>
       );
     }
@@ -616,12 +704,19 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.navigate('ConversationsList')}>
           <ChevronLeft size={26} color={colors.text} />
         </TouchableOpacity>
+        <View style={styles.itemAvatar}>
+          {itemPhotoUrl ? (
+            <Image source={{ uri: itemPhotoUrl }} style={styles.itemAvatarImg} />
+          ) : (
+            <CategoryIcon category={itemCategory} size={18} color={colors.textMuted} strokeWidth={2} />
+          )}
+        </View>
         <TouchableOpacity
           style={styles.headerInfo}
           onPress={() => {
             if (convInfo) {
               const otherId = isLender ? convInfo.renter_id : convInfo.lender_id;
-              (navigation as any).getParent()?.getParent()?.navigate('Home', {
+              (navigation as any).getParent()?.navigate('HomeStack', {
                 screen: 'PublicProfile',
                 params: { userId: otherId, userName: otherUserName },
               });
@@ -638,7 +733,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
           <TouchableOpacity
             style={styles.calendarBtn}
             onPress={() => {
-              (navigation as any).getParent()?.getParent()?.navigate('Profile', {
+              (navigation as any).getParent()?.navigate('Profile', {
                 screen: 'ManageItem',
                 params: { itemId: convInfo.item_id, itemTitle },
               });
@@ -819,6 +914,12 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   backText: { color: colors.text, fontSize: 22, fontWeight: '300' },
+  itemAvatar: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: colors.cardAlt, alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  itemAvatarImg: { width: 36, height: 36, borderRadius: 18 },
   headerInfo: { flex: 1 },
   headerName: { fontSize: 16, fontWeight: '600', color: colors.text },
   headerItemRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 },
@@ -840,14 +941,21 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   bubbleTimeMe: { textAlign: 'right' },
   bubbleTimeThem: { textAlign: 'left' },
 
-  // Rental request card
+  // Rental request card — the live status board for one rental date range
   requestCard: {
     alignSelf: 'center', width: '92%', marginVertical: 8,
-    backgroundColor: colors.infoBg, borderWidth: 1, borderColor: colors.primary,
-    borderRadius: 16, padding: 16, gap: 12,
+    backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
+    borderRadius: 16, padding: 16, gap: 10,
+    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
-  requestText: { color: colors.text, fontSize: 14, lineHeight: 20 },
-  requestStatus: { gap: 8 },
+  requestHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  requestHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 7, flexShrink: 1 },
+  requestDateText: { color: colors.text, fontSize: 15, fontWeight: '700', flexShrink: 1 },
+  requestSubText: { color: colors.textMuted, fontSize: 13, marginTop: -6 },
+  requestStatusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  requestStatusPillText: { fontSize: 12, fontWeight: '700' },
+  requestStatus: { gap: 8, marginTop: 2, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border },
   requestActions: { flexDirection: 'row', gap: 10 },
   viewProfileBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -866,7 +974,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   rejectBtnText: { color: colors.textSecondary, fontWeight: '600', fontSize: 15 },
   btnDisabled: { opacity: 0.4 },
-  approvedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  approvedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   statusChip: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   handoffBlock: { gap: 10 },
   qrActionBtn: {
@@ -877,17 +985,17 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   handoffSecondary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   reportLink: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 4 },
   reportLinkText: { color: colors.danger, fontSize: 13, fontWeight: '600' },
-  statusApproved: { color: colors.success, fontWeight: '600', fontSize: 14 },
-  statusActive: { color: colors.primary, fontWeight: '600', fontSize: 14 },
-  statusCompleted: { color: colors.textFaint, fontWeight: '600', fontSize: 14 },
   statusExpired: { color: colors.warning, fontWeight: '600', fontSize: 13 },
-  statusRejected: { color: colors.danger, fontWeight: '600', fontSize: 14 },
+  // Plain-language caption shown for every rental status — what stage this is
+  // and what (if anything) needs to happen next, role-aware.
+  helperText: { fontSize: 13.5, color: colors.textSecondary, lineHeight: 19 },
+  helperTextFlex: { flex: 1 },
   payBtn: {
-    backgroundColor: colors.btn, borderRadius: 8,
-    flexDirection: 'row', gap: 6, alignItems: 'center',
-    paddingHorizontal: 14, paddingVertical: 8,
+    height: 44, backgroundColor: colors.btn, borderRadius: 10,
+    flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center',
+    width: '100%',
   },
-  payBtnText: { color: colors.btnText, fontWeight: '700', fontSize: 13 },
+  payBtnText: { color: colors.btnText, fontWeight: '700', fontSize: 15 },
   requestTime: { color: colors.textFaint, fontSize: 11, textAlign: 'right' },
   cancelRentalBtn: {
     paddingHorizontal: 12, paddingVertical: 6,

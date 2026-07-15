@@ -1,12 +1,14 @@
-// Shared contract for the QR handoff flow (spec 4.9), used by both
-// QRDisplayScreen (renter) and QRScanScreen (lender).
+// Shared contract for the QR handoff flow (spec 4.9). Whoever currently holds
+// the item displays the QR (QRDisplayScreen); whoever is receiving it scans
+// and verifies its condition (QRScanScreen). That's the lender at pickup
+// (hasn't handed the item over yet) and the renter at return (has been using it).
 
 export type QrPhase = 'pickup' | 'return';
 
 // Both devices must be this close before a scan is accepted.
 export const PROXIMITY_LIMIT_M = 50;
 
-// Condition checklist both parties tick before the QR scan is allowed.
+// Condition checklist the receiving/scanning party ticks before the scan is allowed.
 export const CHECKLIST_ITEMS = [
   'Item is in good condition',
   'All parts and accessories are included',

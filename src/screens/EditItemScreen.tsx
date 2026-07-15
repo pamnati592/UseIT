@@ -37,6 +37,7 @@ export default function EditItemScreen({ navigation, route }: Props) {
   // Legacy city text from the row before the user picks a new one — shown in
   // the CityPicker field so an edit without changing city is still meaningful.
   const [legacyCityText, setLegacyCityText] = useState<string>('');
+  const [pickupLocation, setPickupLocation] = useState('');
   const [forSale, setForSale] = useState(false);
   const [salePrice, setSalePrice] = useState('');
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
@@ -47,7 +48,7 @@ export default function EditItemScreen({ navigation, route }: Props) {
     async function loadItem() {
       const { data, error } = await supabase
         .from('items')
-        .select('title, category, description, daily_price, sale_price, city, photos, location')
+        .select('title, category, description, daily_price, sale_price, city, photos, location, pickup_location')
         .eq('id', itemId)
         .single();
 
@@ -62,6 +63,7 @@ export default function EditItemScreen({ navigation, route }: Props) {
       setDescription(data.description ?? '');
       setDailyPrice(String(data.daily_price ?? ''));
       setLegacyCityText(data.city ?? '');
+      setPickupLocation((data as any).pickup_location ?? '');
       setForSale(data.sale_price != null);
       setSalePrice(data.sale_price != null ? String(data.sale_price) : '');
       setPhotos((data.photos ?? []).filter(Boolean).map((url: string) => ({ kind: 'existing', url })));
@@ -148,6 +150,7 @@ export default function EditItemScreen({ navigation, route }: Props) {
         daily_price: parseFloat(dailyPrice),
         sale_price: forSale && salePrice ? parseFloat(salePrice) : null,
         photos: finalPhotos,
+        pickup_location: pickupLocation.trim() || null,
       };
       if (cityValue) {
         updatePayload.city = cityValue.city;
@@ -257,6 +260,15 @@ export default function EditItemScreen({ navigation, route }: Props) {
             onChange={setCityValue}
             initialDisplayText={legacyCityText}
             placeholder="Choose city"
+          />
+
+          <Text style={styles.label}>Pickup location (optional)</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g. Dizengoff Square, near the fountain"
+            placeholderTextColor={colors.textFaint}
+            value={pickupLocation}
+            onChangeText={setPickupLocation}
           />
 
           <View style={styles.toggleRow}>

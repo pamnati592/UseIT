@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView,
+  View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Alert, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, Star, CircleCheck } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
+import { supabase } from '../services/supabase';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 
@@ -16,11 +17,43 @@ const STAR_COLOR = '#f59e0b';
 export default function RatingScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { itemTitle, otherName } = route.params;
+  const { transactionId, itemTitle, otherName, isRenter } = route.params;
 
   const [stars, setStars] = useState(0);
+  const [itemStars, setItemStars] = useState(0);
   const [review, setReview] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  const canSubmit = stars > 0 && (!isRenter || itemStars > 0);
+
+  async function submitRating() {
+    setSubmitting(true);
+    try {
+      const comment = review.trim() || null;
+      const { error } = await supabase.rpc('submit_rating', {
+        p_tx: transactionId,
+        p_score: stars,
+        p_comment: comment,
+      });
+      if (error) throw error;
+
+      if (isRenter) {
+        const { error: itemError } = await supabase.rpc('submit_item_review', {
+          p_tx: transactionId,
+          p_score: itemStars,
+          p_comment: comment,
+        });
+        if (itemError) throw itemError;
+      }
+
+      setSubmitted(true);
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Could not submit your rating.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -75,10 +108,28 @@ export default function RatingScreen({ navigation, route }: Props) {
               ))}
             </View>
 
+            {isRenter && (
+              <>
+                <Text style={styles.question}>How was the {itemTitle}?</Text>
+                <View style={styles.starsRow}>
+                  {[1, 2, 3, 4, 5].map(i => (
+                    <TouchableOpacity key={i} onPress={() => setItemStars(i)} hitSlop={6}>
+                      <Star
+                        size={36}
+                        color={STAR_COLOR}
+                        fill={i <= itemStars ? STAR_COLOR : 'transparent'}
+                        strokeWidth={1.8}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+
             <Text style={styles.sectionLabel}>Leave a review</Text>
             <TextInput
               style={styles.input}
-              placeholder={`Tell others about ${otherName}…`}
+              placeholder={`Tell others about ${otherName}${isRenter ? ' or the item' : ''}…`}
               placeholderTextColor={colors.textMuted}
               value={review}
               onChangeText={setReview}
@@ -87,11 +138,14 @@ export default function RatingScreen({ navigation, route }: Props) {
             />
 
             <TouchableOpacity
-              style={[styles.primaryBtn, stars === 0 && styles.btnDisabled]}
-              onPress={() => setSubmitted(true)}
-              disabled={stars === 0}
+              style={[styles.primaryBtn, (!canSubmit || submitting) && styles.btnDisabled]}
+              onPress={submitRating}
+              disabled={!canSubmit || submitting}
             >
-              <Text style={styles.primaryBtnText}>Submit Rating</Text>
+              {submitting
+                ? <ActivityIndicator color={colors.btnText} />
+                : <Text style={styles.primaryBtnText}>Submit Rating</Text>
+              }
             </TouchableOpacity>
           </>
         )}

@@ -12,8 +12,8 @@ export type ChatsStackParamList = {
   ChatRoom: { conversationId: string; itemTitle: string; otherUserName: string; initialText?: string; targetTransactionId?: string; initialTab?: 'chat' | 'rental'; highlightAfterTimestamp?: string };
   QRDisplay: { transactionId: string; phase: QrPhase; itemTitle: string; otherName?: string };
   QRScan: { transactionId: string; phase: QrPhase; itemTitle: string; otherName?: string };
-  MeetingPoint: { renterName: string; lenderName: string; confirmMode?: boolean };
-  Rating: { itemTitle: string; otherName: string };
+  MeetingPoint: { pickupLocation: string | null; itemTitle: string };
+  Rating: { transactionId: string; itemTitle: string; otherName: string; isRenter: boolean };
 };
 
 const Stack = createNativeStackNavigator<ChatsStackParamList>();
