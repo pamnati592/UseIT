@@ -153,7 +153,7 @@ export default function ManageItemScreen({ navigation, route }: Props) {
         conversationId: r.conversationId,
         itemTitle,
         otherUserName: r.renterName,
-        initialTab: 'rental',
+        initialTab: 'deal',
         targetTransactionId: r.id,
       },
     });

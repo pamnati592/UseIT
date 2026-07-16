@@ -9,7 +9,7 @@ import type { QrPhase } from '../screens/qrShared';
 
 export type ChatsStackParamList = {
   ConversationsList: undefined;
-  ChatRoom: { conversationId: string; itemTitle: string; otherUserName: string; initialText?: string; targetTransactionId?: string; initialTab?: 'chat' | 'rental'; highlightAfterTimestamp?: string };
+  ChatRoom: { conversationId: string; itemTitle: string; otherUserName: string; initialText?: string; targetTransactionId?: string; initialTab?: 'chat' | 'deal'; highlightAfterTimestamp?: string };
   QRDisplay: { transactionId: string; phase: QrPhase; itemTitle: string; otherName?: string };
   QRScan: { transactionId: string; phase: QrPhase; itemTitle: string; otherName?: string };
   MeetingPoint: { pickupLocation: string | null; itemTitle: string };

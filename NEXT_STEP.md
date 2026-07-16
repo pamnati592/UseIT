@@ -51,10 +51,6 @@ When you build the QR flow, wire any status change (item handed over, item retur
 - Display the score badge and total-review count on `PublicProfileScreen` (already shown, just needs real data).
 - `lender_cancellations` counter on `profiles` → deduct from lender score, show warning badge on public profile after threshold (not yet scoped anywhere else — fold in here).
 
-### C. Buy option
-- Toggle on item upload: "Also available for purchase" + sale price
-- "Buy" button on swipe panel + Item Detail (currently a no-op placeholder)
-
 ### E. Feed ranking algorithm (beyond distance)
 - Current `get_feed` ranks by distance only. Extend the weighted formula with: lender score, interest match (intersect `profiles.interests` with `items.category`/tags), recency.
 - Likely a new `p_user_id` parameter or just use `auth.uid()` internally as it already does for the owner filter.
@@ -63,15 +59,12 @@ When you build the QR flow, wire any status change (item handed over, item retur
 - Every `navigation.goBack()` call needs a `canGoBack()` guard
 - Cross-tab navigations should have a valid back destination
 
-### J. Tab bar redesign
-- AI Planner tab → move into Home feed as a button/banner (it's the same destination)
-- "+" (Add Item) is low-frequency — consider de-emphasizing (plain tab or header button)
-- Final layout decision: 4 tabs (Home / Add / Chats / Profile) or 3 tabs (Home / Chats / Profile with + in header)
-
 ### K. History screen
 - `HistoryScreen` placeholder exists — needs full implementation
 - Show all past completed/cancelled/disputed rentals for both sides (as renter and as lender)
 - Group by role or chronological order TBD
+- **Must also show sold items (2026-07-16)**: when a purchase completes (`mark_purchase_paid` RPC), the item is set `is_hidden = true` and dropped from the feed — per user request, "sold" is deliberately **not** shown publicly, only to the seller, and History is where that should surface (join `purchases` where `seller_id = auth.uid() and status = 'paid'`).
+- **Known gap to fix alongside this**: `MyItemsScreen`'s Hide/Show toggle (`toggleHidden`) is a plain generic switch — it can't currently tell "manually hidden" apart from "auto-hidden because it sold." A seller could tap "Show" on a sold item and accidentally re-list something that's already gone. Fix once History (or a `purchases` check) can distinguish the two.
 
 ### O. Split Chats tab by role (Renter / Lender)
 - Currently all conversations are mixed in a single list — hard to tell which hat you're wearing in each thread
@@ -138,3 +131,4 @@ When you build the QR flow, wire any status change (item handed over, item retur
   - Fixed a pre-existing navigation bug: 3 spots used `getParent()?.getParent()?.navigate(...)` which overshot past the Tab Navigator to the root auth stack (which doesn't have `HomeStack`/`Profile`) — root cause was `RootNavigator` wrapping the tab navigator in a `Stack.Screen name="MainApp"`, so only **one** `getParent()` is needed. Also fixed the same wrong-tab-name bug (`'Home'` → `'HomeStack'`) in `WishlistScreen`.
 - **QR handoff role flip (2026-07-15)** — whoever currently holds the item now displays the QR; whoever is receiving it scans + verifies condition. Pickup: lender displays / renter scans (was backwards before — renter always displayed, lender always scanned, regardless of phase). Return: renter displays / lender scans (unchanged, was already correct). `ensure_qr_token`/`scan_qr_handoff` RPCs now enforce phase-dependent roles server-side. Condition checklist simplified to scanner-only (`QRDisplayScreen` no longer has a checklist/photo step — displayer just shows the QR). **Not yet tested on two real devices** (see "Resume here" above).
 - **Meeting Point redesign (2026-07-15)** — replaced the fully-fake `MeetingPointScreen` (hardcoded "Dizengoff Square", drawn fake map, fake confirm flow) with a real `items.pickup_location` field the lender sets in Add/Edit Item, shown on `ItemDetailScreen` and as a read-only card + "Get Directions" button in `MeetingPointScreen`. Parties can still arrange a different spot via chat — no in-app negotiation mechanism.
+- **C. Buy flow — "Deal Board" (2026-07-16)** — tapping Buy no longer pays instantly. New `purchases` table (separate from `transactions` — no approval step, no rental state machine) + `create_purchase`/`mark_purchase_paid`/`cancel_purchase` RPCs. Tapping **Buy** on `ItemDetailScreen` creates a pending purchase and opens the chat's second tab (renamed **Chat / Deal Board**, was "Rental" — it's the live status board for both rentals and purchases in one merged, chronologically-sorted list). The purchase card explicitly does **not** say "Pay Now" — payment happens in person at pickup, so the buyer's button reads **"I Have the Item — Pay Now"**, tied to the physical handoff moment rather than a remote pay-anytime action. Seller can cancel a still-pending purchase (assumed reasonable, not explicitly requested — flag if unwanted). On payment: `create-payment-intent` edge function extended to accept `purchase_id` alongside `transaction_id`; `mark_purchase_paid` marks the item `is_hidden = true` (sold — deliberately **not** shown publicly, see K above) and auto-cancels any other pending purchase requests for the same item.

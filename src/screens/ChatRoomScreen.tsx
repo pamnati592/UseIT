@@ -14,7 +14,7 @@ import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
 import {
   Check, X, CreditCard, Clock, ChevronLeft, Package, Calendar, MessageCircle, ClipboardList, ArrowUp,
-  ScanLine, QrCode, CircleCheck, TriangleAlert, MapPin, MessageSquare, Scale, UserRound,
+  ScanLine, QrCode, CircleCheck, TriangleAlert, MapPin, MessageSquare, Scale, UserRound, ShoppingCart,
 } from 'lucide-react-native';
 
 // Status label/color shown on the rental-request card's status pill — the card
@@ -28,6 +28,13 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string }> 
   rejected:  { label: 'Declined',  color: '#b91c1c', bg: 'rgba(239,68,68,0.15)' },
   disputed:  { label: 'Disputed',  color: '#b91c1c', bg: 'rgba(239,68,68,0.15)' },
   cancelled: { label: 'Cancelled', color: '#6b7280', bg: 'rgba(107,114,128,0.15)' },
+};
+
+// Same idea for purchase cards — a purchase only ever has these three states.
+const PURCHASE_STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
+  pending:   { label: 'Pending',    color: '#b45309', bg: 'rgba(245,158,11,0.15)' },
+  paid:      { label: 'Purchased',  color: '#15803d', bg: 'rgba(34,197,94,0.15)' },
+  cancelled: { label: 'Cancelled',  color: '#6b7280', bg: 'rgba(107,114,128,0.15)' },
 };
 
 type Message = {
@@ -47,6 +54,16 @@ type Transaction = {
   approved_at?: string | null;
 };
 
+type Purchase = {
+  id: string;
+  item_id: string;
+  buyer_id: string;
+  seller_id: string;
+  price: number;
+  status: 'pending' | 'paid' | 'cancelled';
+  created_at: string;
+};
+
 type ConversationInfo = {
   lender_id: string;
   renter_id: string;
@@ -55,13 +72,20 @@ type ConversationInfo = {
 
 const RENTAL_REQUEST_PREFIX = '📅 Rental request:';
 
+// One feed row for the Deal Board / Chat tabs — chat bubbles, rental status
+// cards, and purchase status cards are all rendered from the same FlatList.
+type FeedRow =
+  | { kind: 'chat'; key: string; msg: Message }
+  | { kind: 'rental'; key: string; msg: Message; tx: Transaction | null }
+  | { kind: 'purchase'; key: string; purchase: Purchase };
+
 type Props = NativeStackScreenProps<ChatsStackParamList, 'ChatRoom'>;
 
 export default function ChatRoomScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { conversationId, itemTitle, otherUserName, initialText, targetTransactionId, initialTab, highlightAfterTimestamp } = route.params;
-  const [activeTab, setActiveTab] = useState<'chat' | 'rental'>(initialTab ?? 'chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'deal'>(initialTab ?? 'chat');
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState(initialText ?? '');
@@ -74,12 +98,13 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   const [itemCategory, setItemCategory] = useState<string>('other');
   const [pickupLocation, setPickupLocation] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<Record<string, Transaction>>({});
+  const [purchases, setPurchases] = useState<Record<string, Purchase>>({});
   const [actionLoading, setActionLoading] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
   const [disputeModal, setDisputeModal] = useState<{ visible: boolean; transactionId: string | null; step: 1 | 2 }>({ visible: false, transactionId: null, step: 1 });
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  const flatListRef = useRef<FlatList<Message>>(null);
+  const flatListRef = useRef<FlatList<FeedRow>>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -93,7 +118,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
         if (data?.full_name && mounted) setCurrentUserName(data.full_name);
       });
 
-      const [messagesRes, convRes, txRes] = await Promise.all([
+      const [messagesRes, convRes, txRes, purchasesRes] = await Promise.all([
         supabase
           .from('messages')
           .select('id, sender_id, content, created_at, transaction_id')
@@ -107,6 +132,10 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
         supabase
           .from('transactions')
           .select('id, status, start_date, end_date, total_price, approved_at')
+          .eq('conversation_id', conversationId),
+        supabase
+          .from('purchases')
+          .select('id, item_id, buyer_id, seller_id, price, status, created_at')
           .eq('conversation_id', conversationId),
       ]);
 
@@ -141,6 +170,11 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       }
 
       setTransactions(map);
+
+      const purchaseMap: Record<string, Purchase> = {};
+      (purchasesRes.data as Purchase[] ?? []).forEach(p => { purchaseMap[p.id] = p; });
+      setPurchases(purchaseMap);
+
       setLoading(false);
 
       await markAsRead(user.id);
@@ -164,6 +198,15 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                 .single();
               if (tx && mounted) setTransactions((prev) => ({ ...prev, [(tx as Transaction).id]: tx as Transaction }));
             }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'purchases', filter: `conversation_id=eq.${conversationId}` },
+          (payload) => {
+            if (!mounted) return;
+            const p = payload.new as Purchase;
+            setPurchases((prev) => ({ ...prev, [p.id]: p }));
           }
         )
         .subscribe();
@@ -215,7 +258,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       // Status-change system messages (approve/pay/cancel/etc.) aren't rendered
       // as separate bubbles anymore — the rental-request card for this
       // transaction is the live status board, so highlight/scroll to that instead.
-      setActiveTab('rental');
+      setActiveTab('deal');
       const rentalMsgs = messages.filter(m => !!m.transaction_id && m.content.startsWith(RENTAL_REQUEST_PREFIX));
       const idx = rentalMsgs.findIndex(m => m.transaction_id === newestUnread.transaction_id);
       if (idx >= 0) {
@@ -465,6 +508,78 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     }
   }
 
+  // Buyer confirms they have the item in hand and pays — this button IS the
+  // "we met, here's the money" moment, not a remote pay-anytime action.
+  async function handlePayPurchase(purchaseId: string) {
+    setPayLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const res = await fetch(
+        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/create-payment-intent`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ purchase_id: purchaseId }),
+        }
+      );
+      const { client_secret, error: fnError } = await res.json();
+      if (fnError) throw new Error(fnError);
+
+      const { error: initError } = await initPaymentSheet({
+        merchantDisplayName: 'SwipeAndRent',
+        paymentIntentClientSecret: client_secret,
+        defaultBillingDetails: { name: '' },
+      });
+      if (initError) throw new Error(initError.message);
+
+      const { error: presentError } = await presentPaymentSheet();
+      if (presentError) {
+        if (presentError.code !== 'Canceled') Alert.alert('Payment failed', presentError.message);
+        return;
+      }
+
+      const { error } = await supabase.rpc('mark_purchase_paid', { p_purchase: purchaseId });
+      if (error) throw error;
+
+      setPurchases(prev => ({ ...prev, [purchaseId]: { ...prev[purchaseId], status: 'paid' } }));
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setPayLoading(false);
+    }
+  }
+
+  function handleCancelPurchase(purchaseId: string) {
+    Alert.alert(
+      'Cancel this purchase?',
+      'This will cancel the purchase request.',
+      [
+        { text: 'Keep it', style: 'cancel' },
+        {
+          text: 'Cancel purchase',
+          style: 'destructive',
+          onPress: async () => {
+            setActionLoading(true);
+            try {
+              const { error } = await supabase.rpc('cancel_purchase', { p_purchase: purchaseId });
+              if (error) throw error;
+              setPurchases(prev => ({ ...prev, [purchaseId]: { ...prev[purchaseId], status: 'cancelled' } }));
+            } catch (e: any) {
+              Alert.alert('Error', e.message);
+            } finally {
+              setActionLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  }
+
   function formatTime(iso: string): string {
     return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
@@ -476,14 +591,22 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
         tx.status === 'approved' &&
         !(tx.approved_at && Date.now() - new Date(tx.approved_at).getTime() > 86_400_000)
       ).length;
-  // Rental tab shows only the rental-request card per transaction — it's the single
-  // live status board for that date range. Status-change system messages (approve/
-  // pay/cancel/etc.) still get inserted for badges/realtime, they just aren't rendered.
-  const filteredMessages = messages.filter(m =>
-    activeTab === 'rental'
-      ? !!m.transaction_id && m.content.startsWith(RENTAL_REQUEST_PREFIX)
-      : !m.transaction_id
-  );
+  // Deal Board tab shows one card per rental transaction + one per purchase —
+  // together they're the single live status board for this conversation.
+  // Status-change system messages (approve/pay/cancel/etc.) still get inserted
+  // for badges/realtime, they just aren't rendered as their own bubbles.
+  const feedRows: FeedRow[] = activeTab === 'chat'
+    ? messages.filter(m => !m.transaction_id).map(m => ({ kind: 'chat', key: m.id, msg: m }))
+    : [
+        ...messages
+          .filter(m => !!m.transaction_id && m.content.startsWith(RENTAL_REQUEST_PREFIX))
+          .map(m => ({ kind: 'rental' as const, key: m.id, msg: m, tx: findTxForMessage(m) })),
+        ...Object.values(purchases).map(p => ({ kind: 'purchase' as const, key: p.id, purchase: p })),
+      ].sort((a, b) => {
+        const at = a.kind === 'purchase' ? a.purchase.created_at : a.msg.created_at;
+        const bt = b.kind === 'purchase' ? b.purchase.created_at : b.msg.created_at;
+        return new Date(bt).getTime() - new Date(at).getTime();
+      });
 
   // When messages lack transaction_id (RPC deployed before column existed),
   // fall back to matching the transaction by the start date embedded in the message text.
@@ -500,12 +623,86 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     }) ?? null;
   }
 
-  function renderMessage({ item: msg }: { item: Message }) {
-    const isMe = msg.sender_id === currentUserId;
-    const isRentalRequest = msg.content.startsWith(RENTAL_REQUEST_PREFIX);
+  function renderFeedRow({ item: row }: { item: FeedRow }) {
+    if (row.kind === 'chat') {
+      const msg = row.msg;
+      const isMe = msg.sender_id === currentUserId;
+      return (
+        <View style={[styles.bubbleWrapper, isMe ? styles.bubbleWrapperMe : styles.bubbleWrapperThem, msg.id === highlightedMessageId && styles.highlighted]}>
+          <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
+            <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
+              {msg.content}
+            </Text>
+          </View>
+          <Text style={[styles.bubbleTime, isMe ? styles.bubbleTimeMe : styles.bubbleTimeThem]}>
+            {formatTime(msg.created_at)}
+          </Text>
+        </View>
+      );
+    }
 
-    if (isRentalRequest) {
-      const tx = findTxForMessage(msg);
+    if (row.kind === 'purchase') {
+      const purchase = row.purchase;
+      const statusMeta = PURCHASE_STATUS_META[purchase.status];
+      return (
+        <View style={[styles.requestCard, purchase.id === highlightedMessageId && styles.highlighted]}>
+          <View style={styles.requestHeader}>
+            <View style={styles.requestHeaderLeft}>
+              <ShoppingCart size={16} color={colors.primary} strokeWidth={2.2} />
+              <Text style={styles.requestDateText} numberOfLines={1}>{itemTitle}</Text>
+            </View>
+            <View style={[styles.requestStatusPill, { backgroundColor: statusMeta.bg }]}>
+              <Text style={[styles.requestStatusPillText, { color: statusMeta.color }]}>{statusMeta.label}</Text>
+            </View>
+          </View>
+          <Text style={styles.requestSubText}>₪{purchase.price}</Text>
+
+          <View style={styles.requestStatus}>
+            {purchase.status === 'pending' && (
+              isLender ? (
+                <View style={styles.approvedRow}>
+                  <Text style={[styles.helperText, styles.helperTextFlex]}>Waiting for {otherUserName} to pick up and pay.</Text>
+                  <TouchableOpacity
+                    style={[styles.cancelRentalBtn, actionLoading && styles.btnDisabled]}
+                    onPress={() => handleCancelPurchase(purchase.id)}
+                    disabled={actionLoading}
+                  >
+                    <Text style={styles.cancelRentalBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  <Text style={styles.helperText}>Pay {otherUserName} in person when you receive the item — not before.</Text>
+                  <TouchableOpacity
+                    style={[styles.qrActionBtn, payLoading && styles.btnDisabled]}
+                    onPress={() => handlePayPurchase(purchase.id)}
+                    disabled={payLoading}
+                  >
+                    {payLoading
+                      ? <ActivityIndicator color={colors.btnText} size="small" />
+                      : <><ShoppingCart size={16} color={colors.btnText} /><Text style={styles.qrActionText}>I Have the Item — Pay Now</Text></>
+                    }
+                  </TouchableOpacity>
+                </>
+              )
+            )}
+            {purchase.status === 'paid' && (
+              <Text style={styles.helperText}>✅ Purchased — thanks for using UseIT.</Text>
+            )}
+            {purchase.status === 'cancelled' && (
+              <Text style={styles.helperText}>❌ This purchase was cancelled.</Text>
+            )}
+          </View>
+
+          <Text style={styles.requestTime}>Requested {formatTime(purchase.created_at)}</Text>
+        </View>
+      );
+    }
+
+    // row.kind === 'rental'
+    {
+      const msg = row.msg;
+      const tx = row.tx;
       const statusMeta = tx ? STATUS_META[tx.status] : null;
       return (
         <View style={[styles.requestCard, msg.id === highlightedMessageId && styles.highlighted]}>
@@ -683,19 +880,6 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
         </View>
       );
     }
-
-    return (
-      <View style={[styles.bubbleWrapper, isMe ? styles.bubbleWrapperMe : styles.bubbleWrapperThem, msg.id === highlightedMessageId && styles.highlighted]}>
-        <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
-          <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
-            {msg.content}
-          </Text>
-        </View>
-        <Text style={[styles.bubbleTime, isMe ? styles.bubbleTimeMe : styles.bubbleTimeThem]}>
-          {formatTime(msg.created_at)}
-        </Text>
-      </View>
-    );
   }
 
   return (
@@ -756,13 +940,13 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
           </View>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'rental' && styles.tabActive]}
-          onPress={() => setActiveTab('rental')}
+          style={[styles.tab, activeTab === 'deal' && styles.tabActive]}
+          onPress={() => setActiveTab('deal')}
         >
           <View style={styles.tabInner}>
-            <ClipboardList size={15} color={activeTab === 'rental' ? colors.text : colors.textMuted} />
-            <Text style={[styles.tabText, activeTab === 'rental' && styles.tabTextActive]}>Rental</Text>
-            {actionBadgeCount > 0 && activeTab !== 'rental' && (
+            <ClipboardList size={15} color={activeTab === 'deal' ? colors.text : colors.textMuted} />
+            <Text style={[styles.tabText, activeTab === 'deal' && styles.tabTextActive]}>Deal Board</Text>
+            {actionBadgeCount > 0 && activeTab !== 'deal' && (
               <View style={styles.tabBadge}>
                 <Text style={styles.tabBadgeText}>{actionBadgeCount}</Text>
               </View>
@@ -778,20 +962,20 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       >
         {loading ? (
           <ActivityIndicator color={colors.text} style={{ flex: 1 }} />
-        ) : filteredMessages.length === 0 ? (
+        ) : feedRows.length === 0 ? (
           <View style={styles.emptyTab}>
             <Text style={styles.emptyTabText}>
-              {activeTab === 'chat' ? 'No messages yet. Say hi!' : 'No rental activity yet.'}
+              {activeTab === 'chat' ? 'No messages yet. Say hi!' : 'No deals yet.'}
             </Text>
           </View>
         ) : (
           <FlatList
             ref={flatListRef}
-            data={filteredMessages}
-            keyExtractor={(m) => m.id}
+            data={feedRows}
+            keyExtractor={(row) => row.key}
             inverted
             contentContainerStyle={styles.messageList}
-            renderItem={renderMessage}
+            renderItem={renderFeedRow}
             onScrollToIndexFailed={({ index, averageItemLength }) => {
               flatListRef.current?.scrollToOffset({ offset: index * averageItemLength, animated: true });
             }}

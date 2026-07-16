@@ -154,7 +154,7 @@ export default function MyRentalsScreen({ navigation }: Props) {
                       itemTitle: r.item_title,
                       otherUserName: r.lender_name,
                       targetTransactionId: r.id,
-                      initialTab: 'rental' as const,
+                      initialTab: 'deal' as const,
                     },
                   });
                 }}

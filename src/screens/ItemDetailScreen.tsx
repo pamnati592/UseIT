@@ -77,6 +77,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
   const photos = item.photos?.filter(Boolean) ?? [];
   const [activeIndex, setActiveIndex] = useState(0);
   const [chatLoading, setChatLoading] = useState(false);
+  const [buyLoading, setBuyLoading] = useState(false);
   const [ownerName, setOwnerName] = useState<string | null>(null);
   const [ownerCity, setOwnerCity] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -285,6 +286,40 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
     }
   }
 
+  // Buy doesn't pay on tap — it opens the Deal Board card in chat, where the
+  // buyer pays in person once they've actually received the item.
+  async function handleBuy() {
+    setBuyLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { Alert.alert('Error', 'You must be logged in to buy'); return; }
+      if (user.id === item.owner_id) { Alert.alert('Your item', 'You cannot buy your own item'); return; }
+
+      const { data, error } = await supabase.rpc('create_purchase', { p_item_id: item.id });
+      if (error) throw error;
+
+      const { data: sellerProfile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', item.owner_id)
+        .single();
+
+      (navigation as any).getParent()?.navigate('Chats', {
+        screen: 'ChatRoom',
+        params: {
+          conversationId: data.conversation_id,
+          itemTitle: item.title,
+          otherUserName: (sellerProfile as any)?.full_name ?? 'Seller',
+          initialTab: 'deal',
+        },
+      });
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setBuyLoading(false);
+    }
+  }
+
   const markedDates = buildMarkedDates(selectedStart, selectedEnd, blockedDates, colors);
   const totalDays = selectedStart && selectedEnd ? daysBetween(selectedStart, selectedEnd) : null;
   const totalPrice = totalDays ? totalDays * item.daily_price : null;
@@ -449,9 +484,15 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
               </TouchableOpacity>
 
               {item.sale_price != null && (
-                <TouchableOpacity style={styles.actionBtn}>
-                  <ShoppingCart size={18} color={colors.btnText} />
-                  <Text style={styles.actionBtnText}>Buy</Text>
+                <TouchableOpacity
+                  style={[styles.actionBtn, buyLoading && styles.actionBtnDisabled]}
+                  onPress={handleBuy}
+                  disabled={buyLoading}
+                >
+                  {buyLoading
+                    ? <ActivityIndicator color={colors.btnText} size="small" />
+                    : <><ShoppingCart size={18} color={colors.btnText} /><Text style={styles.actionBtnText}>Buy</Text></>
+                  }
                 </TouchableOpacity>
               )}
 
