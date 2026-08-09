@@ -17,6 +17,7 @@
       "bundleIdentifier": "com.swipeandrentapp"
     },
     "android": {
+      "package": "com.swipeandrentapp",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -46,7 +47,6 @@
       [
         "@stripe/stripe-react-native",
         {
-          "merchantIdentifier": "merchant.com.swipeandrentapp",
           "enableGooglePay": false
         }
       ],

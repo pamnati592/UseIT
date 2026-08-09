@@ -71,7 +71,7 @@ export default function PhoneVerificationScreen({ onVerified }: { onVerified: ()
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.inner}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.inner}>
         <View style={styles.progressBar}>
           {[...Array(5)].map((_, i) => (
             <View key={i} style={[styles.progressDot, i <= (step === 'otp' ? 4 : 3) && styles.progressDotActive]} />

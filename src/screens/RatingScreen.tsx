@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Alert, ActivityIndicator,
 } from 'react-native';
@@ -7,6 +7,7 @@ import { ChevronLeft, Star, CircleCheck } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
 import { supabase } from '../services/supabase';
+import { hasRatedTransaction } from '../services/ratings';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 
@@ -24,8 +25,23 @@ export default function RatingScreen({ navigation, route }: Props) {
   const [review, setReview] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [checking, setChecking] = useState(true);
 
   const canSubmit = stars > 0 && (!isRenter || itemStars > 0);
+
+  // `submitted` is local state, so navigating away and returning used to offer the
+  // form a second time — and submit_rating upserts, so the new score silently
+  // replaced the old one. Look up the existing rating on mount instead.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const rated = await hasRatedTransaction(transactionId);
+      if (!active) return;
+      if (rated) setSubmitted(true);
+      setChecking(false);
+    })();
+    return () => { active = false; };
+  }, [transactionId]);
 
   async function submitRating() {
     setSubmitting(true);
@@ -66,7 +82,9 @@ export default function RatingScreen({ navigation, route }: Props) {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        {submitted ? (
+        {checking ? (
+          <ActivityIndicator style={{ marginTop: 40 }} color={colors.text} />
+        ) : submitted ? (
           <View style={styles.doneWrap}>
             <View style={styles.doneIconRing}>
               <CircleCheck size={52} color="#22c55e" strokeWidth={1.8} />

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, ScrollView, Image, Modal, TextInput, Animated,
 } from 'react-native';
@@ -8,7 +8,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { ChevronLeft, Check, CircleCheck, TriangleAlert, Camera, MessageSquare, Scale, Leaf } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
+import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
+import { hasRatedTransaction } from '../services/ratings';
 import { getCurrentLocationOnce } from '../hooks/useUserLocation';
 import { metersBetween } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
@@ -16,7 +18,13 @@ import type { ThemeColors } from '../theme/colors';
 import { CHECKLIST_ITEMS, PROXIMITY_LIMIT_M, type QrPayload } from './qrShared';
 
 type Props = NativeStackScreenProps<ChatsStackParamList, 'QRScan'>;
-type Step = 'checklist' | 'photo' | 'scan' | 'done';
+
+// Scan comes first so tapping "Scan to Receive" opens the camera, as the label
+// promises. The scanned token is held in state while the receiver verifies the
+// item, then confirm_condition + scan_qr_handoff fire together on the final
+// confirm — scan_qr_handoff rejects a handoff whose condition wasn't confirmed,
+// so the server still sees the checklist happen first.
+type Step = 'scan' | 'checklist' | 'photo' | 'done';
 
 export default function QRScanScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
@@ -25,13 +33,15 @@ export default function QRScanScreen({ navigation, route }: Props) {
 
   const [permission, requestPermission] = useCameraPermissions();
   const [checked,    setChecked]    = useState<boolean[]>(CHECKLIST_ITEMS.map(() => false));
-  const [step,       setStep]       = useState<Step>('checklist');
+  const [step,       setStep]       = useState<Step>('scan');
+  const [scannedToken, setScannedToken] = useState<string | null>(null);
   const [scannedFlash, setScannedFlash] = useState(false);
   const [photoUri,   setPhotoUri]   = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const [disputeModal, setDisputeModal] = useState<{ visible: boolean; step: 1 | 2 }>({ visible: false, step: 1 });
   const [disputeDone, setDisputeDone] = useState(false);
   const [disputePhotoUri, setDisputePhotoUri] = useState<string | null>(null);
+  const [alreadyRated, setAlreadyRated] = useState(false);
   const [disputeText, setDisputeText] = useState('');
   const scoreAnim = useRef(new Animated.Value(0)).current;
   const handledRef = useRef(false);
@@ -58,22 +68,40 @@ export default function QRScanScreen({ navigation, route }: Props) {
     }
   }
 
-  async function confirmPhotoAndScan() {
+  // The camera is the first thing this screen shows, so ask on arrival rather than
+  // part-way through the flow.
+  useEffect(() => {
+    if (step !== 'scan' || permission?.granted) return;
+    requestPermission();
+  }, [step, permission?.granted]);
+
+  async function confirmAndComplete() {
+    if (!scannedToken) return;
     setProcessing(true);
     try {
-      const { error } = await supabase.rpc('confirm_condition', { p_tx: transactionId, p_phase: phase });
-      if (error) throw error;
-      if (!permission?.granted) {
-        const res = await requestPermission();
-        if (!res.granted) {
-          Alert.alert('Camera needed', 'Allow camera access to scan the rental QR code.');
-          return;
-        }
-      }
-      handledRef.current = false;
-      setStep('scan');
+      const { error: condErr } = await supabase.rpc('confirm_condition', { p_tx: transactionId, p_phase: phase });
+      if (condErr) throw condErr;
+
+      const { error: scanErr } = await supabase.rpc('scan_qr_handoff', {
+        p_tx: transactionId, p_token: scannedToken, p_phase: phase,
+      });
+      if (scanErr) throw scanErr;
+
+      setStep('done');
     } catch (e: any) {
-      Alert.alert('Error', e.message ?? 'Could not start scanning.');
+      const msg = e.message ?? 'Could not complete the handoff.';
+      // The displayer's token is regenerated whenever they reopen the QR screen,
+      // which invalidates one scanned earlier. Send the user back to rescan instead
+      // of stranding them on a confirm button that can never succeed.
+      if (/invalid QR/i.test(msg)) {
+        Alert.alert(
+          'QR code expired',
+          `Ask ${otherName ?? 'them'} to show the QR again, then rescan.`,
+          [{ text: 'Rescan', onPress: () => { handledRef.current = false; setScannedToken(null); setStep('scan'); } }],
+        );
+      } else {
+        Alert.alert('Handoff failed', msg);
+      }
     } finally {
       setProcessing(false);
     }
@@ -84,6 +112,18 @@ export default function QRScanScreen({ navigation, route }: Props) {
     if (step !== 'done' || phase !== 'return') return;
     Animated.timing(scoreAnim, { toValue: 1, duration: 1500, useNativeDriver: false }).start();
   }, [step, phase]);
+
+  // Checked on focus rather than only on mount: the user lands back on this screen
+  // right after rating, and the offer has to be gone by then rather than leading to
+  // a form that submit_rating would refuse.
+  useFocusEffect(
+    useCallback(() => {
+      if (step !== 'done' || phase !== 'return') return;
+      let active = true;
+      hasRatedTransaction(transactionId).then((rated) => { if (active) setAlreadyRated(rated); });
+      return () => { active = false; };
+    }, [step, phase, transactionId])
+  );
 
   async function confirmDispute() {
     try {
@@ -106,6 +146,9 @@ export default function QRScanScreen({ navigation, route }: Props) {
     handledRef.current = true;
     setProcessing(true);
     try {
+      // Proximity is verified here, at scan time, rather than on the final confirm —
+      // otherwise the user would fill in the whole checklist before being told they
+      // are standing too far apart for the handoff to be accepted.
       const coords = await getCurrentLocationOnce();
       if (!coords) {
         Alert.alert('Location needed', `Enable location to verify you are with ${otherName ?? 'the other party'}.`);
@@ -118,14 +161,12 @@ export default function QRScanScreen({ navigation, route }: Props) {
         handledRef.current = false;
         return;
       }
-      const { data: newStatus, error } = await supabase.rpc('scan_qr_handoff', {
-        p_tx: transactionId, p_token: payload.k, p_phase: phase,
-      });
-      if (error) throw error;
-      void newStatus;
-      setStep('done');
+      // Hold the token; the handoff itself is committed once the condition is confirmed.
+      setScannedToken(payload.k);
+      setScannedFlash(true);
+      setTimeout(() => { setScannedFlash(false); setStep('checklist'); }, 700);
     } catch (e: any) {
-      Alert.alert('Scan failed', e.message ?? 'Could not complete the handoff.');
+      Alert.alert('Scan failed', e.message ?? 'Could not read the QR code.');
       handledRef.current = false;
     } finally {
       setProcessing(false);
@@ -213,12 +254,14 @@ export default function QRScanScreen({ navigation, route }: Props) {
 
               <TouchableOpacity
                 style={[styles.primaryBtn, (!photoUri || processing) && styles.btnDisabled]}
-                onPress={confirmPhotoAndScan}
+                onPress={confirmAndComplete}
                 disabled={!photoUri || processing}
               >
                 {processing
                   ? <ActivityIndicator color={colors.btnText} />
-                  : <Text style={styles.primaryBtnText}>Confirm & Scan QR</Text>
+                  : <Text style={styles.primaryBtnText}>
+                      {phase === 'pickup' ? 'Confirm & Receive Item' : 'Confirm & Complete Return'}
+                    </Text>
                 }
               </TouchableOpacity>
             </>
@@ -265,7 +308,7 @@ export default function QRScanScreen({ navigation, route }: Props) {
                 </View>
               )}
 
-              {phase === 'return' ? (
+              {phase === 'return' && !alreadyRated ? (
                 <TouchableOpacity
                   style={styles.primaryBtn}
                   onPress={() => navigation.navigate('Rating', { transactionId, itemTitle, otherName: otherName ?? 'them', isRenter: false })}
@@ -285,15 +328,29 @@ export default function QRScanScreen({ navigation, route }: Props) {
       {/* ── QR scanner (full screen) ── */}
       {step === 'scan' && (
         <View style={styles.scanWrap}>
-          <CameraView
-            style={StyleSheet.absoluteFill}
-            facing="back"
-            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-            onBarcodeScanned={onScanned}
-          />
+          {permission?.granted ? (
+            <CameraView
+              style={StyleSheet.absoluteFill}
+              facing="back"
+              barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+              onBarcodeScanned={onScanned}
+            />
+          ) : (
+            <View style={styles.permissionWrap}>
+              <Camera size={40} color="#fff" strokeWidth={1.5} />
+              <Text style={styles.permissionText}>
+                Camera access is needed to scan {otherName ? `${otherName}'s` : "the other party's"} QR code.
+              </Text>
+              <TouchableOpacity style={styles.permissionBtn} onPress={requestPermission}>
+                <Text style={styles.primaryBtnText}>Allow Camera</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           <View style={styles.scanOverlay} pointerEvents="none">
-            <View style={styles.scanFrame} />
-            <Text style={styles.scanHint}>Point at {otherName ? `${otherName}'s` : "the other party's"} QR code</Text>
+            {permission?.granted && <View style={styles.scanFrame} />}
+            {permission?.granted && (
+              <Text style={styles.scanHint}>Point at {otherName ? `${otherName}'s` : "the other party's"} QR code</Text>
+            )}
           </View>
           {scannedFlash && (
             <View style={styles.scannedFlash} pointerEvents="none">
@@ -491,6 +548,15 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     borderWidth: 3, borderColor: 'rgba(255,255,255,0.9)',
   },
   scanHint: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  permissionWrap: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center', justifyContent: 'center', gap: 16, padding: 32,
+  },
+  permissionText: { color: '#fff', fontSize: 15, textAlign: 'center', lineHeight: 22 },
+  permissionBtn: {
+    height: 52, paddingHorizontal: 28, backgroundColor: colors.btn, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+  },
   scannedFlash: {
     ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(34,197,94,0.88)',
     alignItems: 'center', justifyContent: 'center', gap: 16,

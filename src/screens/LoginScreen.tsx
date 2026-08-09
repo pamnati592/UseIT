@@ -1,7 +1,7 @@
 import { useState, useMemo} from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ActivityIndicator, Alert, TextInput, KeyboardAvoidingView, Platform,
+  ActivityIndicator, Alert, TextInput, KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { signInWithGoogle, signInWithEmail, signUpWithEmail } from '../services/auth.service';
@@ -50,10 +50,20 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* 'height' rather than no behavior at all on Android: without it the keyboard
+          simply overlaps the inputs. The ScrollView is the real safety net — on short
+          screens the form can still be scrolled up into view instead of being trapped
+          under the keyboard, and flexGrow keeps the space-between layout when it fits. */}
       <KeyboardAvoidingView
-        style={styles.inner}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
+        <ScrollView
+          contentContainerStyle={styles.inner}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
         {/* Logo */}
         <View style={styles.logoContainer}>
           <View style={styles.logo}>
@@ -129,6 +139,7 @@ export default function LoginScreen() {
         )}
 
         <Text style={styles.terms}>By continuing, you agree to our Terms & Privacy</Text>
+        </ScrollView>
       </KeyboardAvoidingView>
 
       {loading && (
@@ -142,7 +153,7 @@ export default function LoginScreen() {
 
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  inner: { flex: 1, alignItems: 'center', justifyContent: 'space-between', paddingVertical: 40, paddingHorizontal: 24 },
+  inner: { flexGrow: 1, alignItems: 'center', justifyContent: 'space-between', paddingVertical: 40, paddingHorizontal: 24 },
   logoContainer: { alignItems: 'center' },
   logo: {
     width: 80, height: 80, backgroundColor: colors.cardAlt,

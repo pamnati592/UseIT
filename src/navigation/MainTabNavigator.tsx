@@ -1,5 +1,6 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import { House, Sparkles, MessageCircle, User, Plus, type LucideIcon } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
@@ -38,6 +39,10 @@ const TAB_LABELS: Partial<Record<keyof MainTabParamList, string>> = {
 export default function MainTabNavigator() {
   const { colors } = useTheme();
   const unreadCount = useUnreadCount();
+  // app.json sets edgeToEdgeEnabled, so the tab bar draws underneath Android's
+  // navigation bar / gesture pill. A hardcoded height put the tab labels behind it;
+  // the bottom inset has to be added to both the height and the padding.
+  const insets = useSafeAreaInsets();
 
   return (
     <Tab.Navigator
@@ -74,11 +79,11 @@ export default function MainTabNavigator() {
           );
         },
         tabBarStyle: {
-          height: 72,
+          height: 72 + insets.bottom,
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
           borderTopWidth: 1,
-          paddingBottom: 8,
+          paddingBottom: 8 + insets.bottom,
         },
       })}
     >

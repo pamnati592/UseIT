@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef, useMemo} from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, Image, type ListRenderItemInfo,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStripe } from '@stripe/stripe-react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
 import { supabase } from '../services/supabase';
@@ -202,6 +203,29 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
         )
         .on(
           'postgres_changes',
+          { event: '*', schema: 'public', table: 'transactions', filter: `conversation_id=eq.${conversationId}` },
+          (payload) => {
+            if (!mounted) return;
+            const row = payload.new as Transaction | null;
+            if (!row?.id) return;
+            // Push status straight from the transaction row. Previously this only
+            // arrived as a side effect of the accompanying system message, so an
+            // approve/pay by the other party left this screen stale until remount.
+            setTransactions((prev) => ({
+              ...prev,
+              [row.id]: {
+                id: row.id,
+                status: row.status,
+                start_date: row.start_date,
+                end_date: row.end_date,
+                total_price: row.total_price,
+                approved_at: row.approved_at,
+              },
+            }));
+          }
+        )
+        .on(
+          'postgres_changes',
           { event: '*', schema: 'public', table: 'purchases', filter: `conversation_id=eq.${conversationId}` },
           (payload) => {
             if (!mounted) return;
@@ -224,6 +248,45 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       }
     };
   }, [conversationId]);
+
+  // Safety net for the realtime subscription: an event can still be missed if the
+  // app was backgrounded, the socket dropped, or a row changed in the window before
+  // .subscribe() completed. Re-syncing on focus does automatically what leaving the
+  // chat and re-entering it used to do by hand — and covers the return trip from the
+  // QR screens, where the status changes while this screen is unmounted from view.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      (async () => {
+        const [txRes, purchasesRes] = await Promise.all([
+          supabase
+            .from('transactions')
+            .select('id, status, start_date, end_date, total_price, approved_at')
+            .eq('conversation_id', conversationId),
+          supabase
+            .from('purchases')
+            .select('id, item_id, buyer_id, seller_id, price, status, created_at')
+            .eq('conversation_id', conversationId),
+        ]);
+        if (!active) return;
+        if (txRes.data) {
+          setTransactions((prev) => {
+            const next = { ...prev };
+            (txRes.data as Transaction[]).forEach((tx) => { next[tx.id] = tx; });
+            return next;
+          });
+        }
+        if (purchasesRes.data) {
+          setPurchases((prev) => {
+            const next = { ...prev };
+            (purchasesRes.data as Purchase[]).forEach((p) => { next[p.id] = p; });
+            return next;
+          });
+        }
+      })();
+      return () => { active = false; };
+    }, [conversationId])
+  );
 
   // After messages + transactions load, scroll to the target rental request card
   useEffect(() => {
@@ -329,10 +392,14 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
 
   // Update conversation timestamp BEFORE inserting the message so that when the
   // realtime INSERT event fires, useUnreadCount already sees the updated last_message_at.
-  async function insertSystemMessage(content: string, transactionId: string) {
+  // `preview` is what the Chats list shows. The full `content` is the record kept on
+  // the message row, but it reads as a paragraph in a one-line list, so status changes
+  // pass a short summary instead: what changed, and what happens next. It has to stay
+  // role-neutral — both parties read the same conversations.last_message string.
+  async function insertSystemMessage(content: string, transactionId: string, preview?: string) {
     const now = new Date().toISOString();
     await supabase.from('conversations').update({
-      last_message: content,
+      last_message: preview ?? content,
       last_message_at: now,
     }).eq('id', conversationId);
     await supabase.from('messages').insert({
@@ -376,7 +443,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
               const msg = isPaid
                 ? `⚠️ Your rental (${dateRef}) has been cancelled by the lender. You will receive a full refund.`
                 : `⚠️ Your booking request (${dateRef}) has been cancelled by the lender. No payment was taken.`;
-              await insertSystemMessage(msg, transactionId);
+              await insertSystemMessage(msg, transactionId, '⚠️ Rental cancelled');
             } catch (e: any) {
               Alert.alert('Error', e.message);
             } finally {
@@ -402,7 +469,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
 
       const tx = transactions[transactionId];
       const dateRef = tx ? ` (${formatDateRange(tx)})` : '';
-      await insertSystemMessage(`✅ Request approved${dateRef}! Payment is due within 24 hours.`, transactionId);
+      await insertSystemMessage(`✅ Request approved${dateRef}! Payment is due within 24 hours.`, transactionId, '✅ Approved · Payment due');
     } catch (e: any) {
       Alert.alert('Error', e.message);
     } finally {
@@ -423,7 +490,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
 
       const tx = transactions[transactionId];
       const dateRef = tx ? ` (${formatDateRange(tx)})` : '';
-      await insertSystemMessage(`❌ Request declined${dateRef}.`, transactionId);
+      await insertSystemMessage(`❌ Request declined${dateRef}.`, transactionId, '❌ Request declined');
     } catch (e: any) {
       Alert.alert('Error', e.message);
     } finally {
@@ -447,6 +514,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     await insertSystemMessage(
       `⚠️ An issue was escalated to UseIT Arbitration${dateRef}. Both parties have agreed to accept the platform's binding decision. Funds are held in escrow pending review.`,
       transactionId,
+      '⚠️ Issue escalated · Under review',
     );
   }
 
@@ -500,7 +568,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
 
       const paidTx = transactions[transactionId];
       const paidDateRef = paidTx ? ` (${formatDateRange(paidTx)})` : '';
-      await insertSystemMessage(`💳 Payment completed${paidDateRef}! Show the pickup QR at handover.`, transactionId);
+      await insertSystemMessage(`💳 Payment completed${paidDateRef}! Show the pickup QR at handover.`, transactionId, '💳 Paid · Ready for pickup');
     } catch (e: any) {
       Alert.alert('Error', e.message);
     } finally {
@@ -957,7 +1025,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}
       >
         {loading ? (

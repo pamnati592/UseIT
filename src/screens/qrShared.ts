@@ -6,6 +6,11 @@
 export type QrPhase = 'pickup' | 'return';
 
 // Both devices must be this close before a scan is accepted.
+//
+// Verified on two real devices (2026-08-09): standing side by side, the two GPS
+// fixes disagreed by ~19m. That is normal receiver-to-receiver error, but it eats
+// most of this budget — the usable margin for genuinely-apart devices is nearer
+// 30m than 50m. See backlog Y before tightening this value.
 export const PROXIMITY_LIMIT_M = 50;
 
 // Condition checklist the receiving/scanning party ticks before the scan is allowed.

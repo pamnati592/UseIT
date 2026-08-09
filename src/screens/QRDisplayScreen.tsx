@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, ScrollView, Animated,
 } from 'react-native';
@@ -7,7 +7,9 @@ import QRCode from 'react-native-qrcode-svg';
 import { ChevronLeft, CircleCheck, TriangleAlert, Leaf } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
+import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
+import { hasRatedTransaction } from '../services/ratings';
 import { getCurrentLocationOnce } from '../hooks/useUserLocation';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
@@ -27,6 +29,7 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
 
   const [step,    setStep]    = useState<Step>('loading');
   const [payload, setPayload] = useState<QrPayload | null>(null);
+  const [alreadyRated, setAlreadyRated] = useState(false);
   const scoreAnim = useRef(new Animated.Value(0)).current;
   const pollRef   = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -55,6 +58,18 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
   useEffect(() => {
     startDisplay();
   }, []);
+
+  // Checked on focus rather than only on mount: the user lands back on this screen
+  // right after rating, and the offer has to be gone by then rather than leading to
+  // a form that submit_rating would refuse.
+  useFocusEffect(
+    useCallback(() => {
+      if (step !== 'done' || phase !== 'return') return;
+      let active = true;
+      hasRatedTransaction(transactionId).then((rated) => { if (active) setAlreadyRated(rated); });
+      return () => { active = false; };
+    }, [step, phase, transactionId])
+  );
 
   useEffect(() => {
     if (step !== 'qr') return;
@@ -173,12 +188,18 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
               <Text style={styles.impactCo2}>🌿 ~{CO2_SAVED} kg CO₂ saved this rental</Text>
             </View>
 
-            <TouchableOpacity
-              style={styles.primaryBtn}
-              onPress={() => navigation.navigate('Rating', { transactionId, itemTitle, otherName: otherName ?? 'them', isRenter: true })}
-            >
-              <Text style={styles.primaryBtnText}>Rate the Experience</Text>
-            </TouchableOpacity>
+            {alreadyRated ? (
+              <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.goBack()}>
+                <Text style={styles.primaryBtnText}>Done</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.primaryBtn}
+                onPress={() => navigation.navigate('Rating', { transactionId, itemTitle, otherName: otherName ?? 'them', isRenter: true })}
+              >
+                <Text style={styles.primaryBtnText}>Rate the Experience</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
