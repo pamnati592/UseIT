@@ -4,9 +4,25 @@
 
 **Context:** DB access via Supabase MCP is confirmed live (verified 2026-07-13, project `ACTIVE_HEALTHY`) — no need to re-verify at the start of a session.
 
-**Status of the two-device test (2026-08-09):** both devices are running dev clients (see Done). The flow has been driven through request → approve → pay → pickup QR, and the four bugs that surfaced are fixed (live status updates, chat previews, QR scan order, Android keyboard/tab-bar layout). **Still unverified end-to-end:** the return leg (renter displays / lender scans), the 50m proximity rejection (needs one device walked ~100m away — with both phones side by side a no-op check and a working check look identical), and the completed → rating path. The biggest gap found is **T** — no handoff or dispute photo is stored anywhere.
+### ✅ The QR handoff is now verified on two real devices (2026-08-09)
 
-**⚠️ Historical note — the QR handoff role-flip (2026-07-15).** We changed who displays vs. scans the QR at each phase (see "Done" below), plus condition-checklist gating. This has **not been tested on two real devices yet** — the simulator can't validate two independent GPS positions + two independent logins interacting with each other, and the proximity check (50m) plus the phase-dependent RPC permission checks (`ensure_qr_token` / `scan_qr_handoff`) are exactly the kind of thing that looks right in code but needs a live two-party test to be sure. Plan: build dev clients on an iPhone and an old Galaxy Android device (`npx expo run:ios --device` / `npx expo run:android --device`, both on the same Wi-Fi as Metro), log in as two different test accounts, run a rental through pending → approved → paid → pickup QR → active → return QR → completed, and confirm the right party sees "show QR" vs "scan QR" at each phase.
+This was the open blocker at the top of this file for three weeks. It is closed. A full rental (`Bosch Power Drill Set`, Nati → Ori) ran the whole lifecycle on an iPhone 12 Pro + Galaxy S20 FE with two separate logins: **request → approve → pay → pickup QR → active → return QR → completed → both parties rated.** The role flip is correct in both phases, and the 50m proximity check was proven to genuinely reject (see **Y**), not merely pass by default.
+
+Six bugs surfaced and are fixed — see the 2026-08-09 entries under Done.
+
+**Next session — start here:**
+
+1. **T is the biggest hole.** Every condition photo and every dispute photo the app collects is thrown away. A dispute currently reaches "Case Under Review" carrying no evidence whatsoever. It also blocks **U**, since an admin console has nothing to adjudicate. Needs a Storage bucket + RLS + schema before any UI.
+2. **X is a batch of ~30-minute cleanups** (notification sound spam, a 404 item photo, 11 stale June transactions, the missing handoff system message) — good for warming up or for a short session.
+3. A **Polaroid transaction is parked at `paid`** (`00ab7764`, Ori lends → Nati rents, 26–28 Aug) if you want a ready-made handoff to test against without setting one up.
+
+**Two-device setup notes (so this isn't re-derived):**
+- Android toolchain is Zulu JDK 17 + Android command-line tools — **no Android Studio needed**. `ANDROID_HOME=/opt/homebrew/share/android-commandlinetools`.
+- **Keep the Galaxy on USB while testing.** `adb reverse` tunnels Metro over the cable. Unplugged, it silently runs a stale bundle while still *looking* like it works — this cost a full debugging round on 2026-08-09, where a proximity check appeared broken but was only running old code.
+- The iPhone reaches Metro over Wi-Fi only; USB is for installing. Free Apple personal team ⇒ **the build expires after 7 days**, re-run `npx expo run:ios --device` to refresh.
+- After any `npx expo prebuild`, re-run `plutil -remove aps-environment ios/SwipeAndRent/SwipeAndRent.entitlements` — prebuild re-adds a push entitlement a free team cannot sign, and the app only uses local notifications.
+
+**⚠️ The two migrations from 2026-08-09 are already applied to the live project** (`add_transactions_purchases_to_realtime`, `submit_rating_reject_duplicate`). Anyone running this code against a *different* Supabase project must apply them, or realtime status updates will silently not work there.
 
 ---
 
