@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import * as Location from 'expo-location';
 
-export type Coords = { latitude: number; longitude: number };
+export type Coords = { latitude: number; longitude: number; accuracy?: number | null };
 
 export type LocationStatus =
   | 'idle'        // Permission not requested yet
@@ -98,16 +98,29 @@ export function useUserLocation(): UserLocation {
 // purposeful instead of greeting them when the screen opens.
 // Returns null on denial or any error — caller decides how to handle it
 // (e.g. allow the item to be saved without a location).
-export async function getCurrentLocationOnce(): Promise<Coords | null> {
+/**
+ * One-shot position read.
+ *
+ * `accuracy` defaults to Balanced (~100m, Wi-Fi/network derived) which is right for
+ * things like resolving a city name cheaply. It is **far too coarse for the QR
+ * proximity check**, whose threshold is 50m — a 100m error budget compared against a
+ * 50m limit means two phones touching each other can read anywhere from 0m to 150m
+ * apart. Those callers pass Location.Accuracy.High (~10m) instead.
+ *
+ * Returns the reported `accuracy` radius alongside the coords so callers can tell a
+ * genuine distance from a bad fix.
+ */
+export async function getCurrentLocationOnce(
+  accuracy: Location.LocationAccuracy = Location.Accuracy.Balanced,
+): Promise<Coords | null> {
   try {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') return null;
-    const position = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
-    });
+    const position = await Location.getCurrentPositionAsync({ accuracy });
     return {
       latitude: position.coords.latitude,
       longitude: position.coords.longitude,
+      accuracy: position.coords.accuracy,
     };
   } catch {
     return null;

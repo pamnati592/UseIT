@@ -9,9 +9,14 @@ import type { QrPhase } from '../screens/qrShared';
 
 export type ChatsStackParamList = {
   ConversationsList: undefined;
-  ChatRoom: { conversationId: string; itemTitle: string; otherUserName: string; initialText?: string; targetTransactionId?: string; initialTab?: 'chat' | 'deal'; highlightAfterTimestamp?: string };
-  QRDisplay: { transactionId: string; phase: QrPhase; itemTitle: string; otherName?: string };
-  QRScan: { transactionId: string; phase: QrPhase; itemTitle: string; otherName?: string };
+  // declineTransactionId: set when the renter bails out of the pickup scan because the
+  // item is wrong. QRScanScreen routes here rather than implementing its own decline —
+  // ChatRoomScreen is the canonical screen for every rental action (SAS).
+  ChatRoom: { conversationId: string; itemTitle: string; otherUserName: string; initialText?: string; targetTransactionId?: string; initialTab?: 'chat' | 'deal'; highlightAfterTimestamp?: string; declineTransactionId?: string };
+  QRDisplay: { transactionId: string; phase: QrPhase; itemTitle: string; otherName?: string; conversationId: string };
+  // conversationId so the pickup "item isn't as described" route can navigate back to
+  // the chat that owns the decline action.
+  QRScan: { transactionId: string; phase: QrPhase; itemTitle: string; otherName?: string; conversationId: string };
   MeetingPoint: { pickupLocation: string | null; itemTitle: string };
   Rating: { transactionId: string; itemTitle: string; otherName: string; isRenter: boolean };
 };

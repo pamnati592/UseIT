@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, Image, type ListRenderItemInfo,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, Image,
+  Keyboard, TouchableWithoutFeedback, type ListRenderItemInfo,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStripe } from '@stripe/stripe-react-native';
@@ -73,6 +74,12 @@ type ConversationInfo = {
 
 const RENTAL_REQUEST_PREFIX = '📅 Rental request:';
 
+// Declining at pickup cancels the rental and frees the dates with no cancellation
+// penalty, so it needs friction — a renter should not be able to back out of a
+// booking on the day with one tap. Requiring a written reason (which the lender
+// then sees in the chat) is that friction. Tune here if it proves too strict.
+const DECLINE_REASON_MIN = 10;
+
 // One feed row for the Deal Board / Chat tabs — chat bubbles, rental status
 // cards, and purchase status cards are all rendered from the same FlatList.
 type FeedRow =
@@ -85,7 +92,7 @@ type Props = NativeStackScreenProps<ChatsStackParamList, 'ChatRoom'>;
 export default function ChatRoomScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { conversationId, itemTitle, otherUserName, initialText, targetTransactionId, initialTab, highlightAfterTimestamp } = route.params;
+  const { conversationId, itemTitle, otherUserName, initialText, targetTransactionId, initialTab, highlightAfterTimestamp, declineTransactionId } = route.params;
   const [activeTab, setActiveTab] = useState<'chat' | 'deal'>(initialTab ?? 'chat');
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -103,6 +110,8 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   const [actionLoading, setActionLoading] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
   const [disputeModal, setDisputeModal] = useState<{ visible: boolean; transactionId: string | null; step: 1 | 2 }>({ visible: false, transactionId: null, step: 1 });
+  const [declineModal, setDeclineModal] = useState<{ visible: boolean; transactionId: string | null }>({ visible: false, transactionId: null });
+  const [declineReason, setDeclineReason] = useState('');
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const flatListRef = useRef<FlatList<FeedRow>>(null);
@@ -502,6 +511,48 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     setDisputeModal({ visible: true, transactionId, step: 1 });
   }
 
+  function handleDeclineAtPickup(transactionId: string) {
+    setDeclineReason('');
+    setDeclineModal({ visible: true, transactionId });
+  }
+
+  // The renter bailed out of the pickup scan because the item was wrong. QRScanScreen
+  // routes back here with the transaction id rather than running its own decline, so
+  // the action still executes in exactly one place. Params are cleared afterwards so a
+  // later re-render doesn't reopen the modal.
+  useEffect(() => {
+    if (!declineTransactionId) return;
+    handleDeclineAtPickup(declineTransactionId);
+    navigation.setParams({ declineTransactionId: undefined });
+  }, [declineTransactionId]);
+
+  async function confirmDeclineAtPickup() {
+    const transactionId = declineModal.transactionId;
+    if (!transactionId || declineReason.trim().length < DECLINE_REASON_MIN) return;
+    const reason = declineReason.trim();
+    setDeclineModal({ visible: false, transactionId: null });
+    setActionLoading(true);
+    try {
+      const { error } = await supabase.rpc('decline_at_pickup', { p_tx: transactionId, p_reason: reason });
+      if (error) throw error;
+      setTransactions(prev => ({ ...prev, [transactionId]: { ...prev[transactionId], status: 'cancelled' } }));
+      const tx = transactions[transactionId];
+      const dateRef = tx ? ` (${formatDateRange(tx)})` : '';
+      // The reason goes into the chat, not just the disputes table: a decline that the
+      // lender can see and answer is a much stronger deterrent to casual cancellation
+      // than one that silently disappears into an admin queue.
+      await insertSystemMessage(
+        `⚠️ ${currentUserName} declined the item at pickup${dateRef}. Reason: "${reason}". The rental was cancelled and the dates are free again.`,
+        transactionId,
+        '⚠️ Item declined at pickup',
+      );
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Could not decline the item.');
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   async function confirmDispute() {
     const transactionId = disputeModal.transactionId;
     if (!transactionId) return;
@@ -891,7 +942,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.qrActionBtn}
-                    onPress={() => navigation.navigate(isLender ? 'QRDisplay' : 'QRScan', { transactionId: tx.id, phase: 'pickup', itemTitle })}
+                    onPress={() => navigation.navigate(isLender ? 'QRDisplay' : 'QRScan', { transactionId: tx.id, phase: 'pickup', itemTitle, otherName: otherUserName, conversationId })}
                   >
                     {isLender
                       ? <><QrCode size={16} color={colors.btnText} /><Text style={styles.qrActionText}>Show Pickup QR</Text></>
@@ -901,6 +952,19 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                     {isLender && canCancelTx(tx) && (
                       <TouchableOpacity style={[styles.cancelRentalBtn, actionLoading && styles.btnDisabled]} onPress={() => handleCancel(tx.id)} disabled={actionLoading}>
                         <Text style={styles.cancelRentalBtnText}>Cancel</Text>
+                      </TouchableOpacity>
+                    )}
+                    {/* The renter's only exit at the handoff. canCancelTx blocks
+                        cancelling inside 48h of the start date, which is exactly when a
+                        pickup happens — without this, a renter who finds the item broken
+                        can only accept it or walk away with no in-app action. */}
+                    {!isLender && (
+                      <TouchableOpacity
+                        style={[styles.cancelRentalBtn, actionLoading && styles.btnDisabled]}
+                        onPress={() => handleDeclineAtPickup(tx.id)}
+                        disabled={actionLoading}
+                      >
+                        <Text style={styles.cancelRentalBtnText}>Decline Item</Text>
                       </TouchableOpacity>
                     )}
                     <TouchableOpacity style={styles.reportLink} onPress={() => handleReportIssue(tx.id)}>
@@ -918,7 +982,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                   </Text>
                   <TouchableOpacity
                     style={styles.qrActionBtn}
-                    onPress={() => navigation.navigate(isLender ? 'QRScan' : 'QRDisplay', { transactionId: tx.id, phase: 'return', itemTitle })}
+                    onPress={() => navigation.navigate(isLender ? 'QRScan' : 'QRDisplay', { transactionId: tx.id, phase: 'return', itemTitle, otherName: otherUserName, conversationId })}
                   >
                     {isLender
                       ? <><ScanLine size={16} color={colors.btnText} /><Text style={styles.qrActionText}>Scan to Complete</Text></>
@@ -1152,6 +1216,70 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
           </View>
         </View>
       </Modal>
+
+      {/* ── Decline at pickup ── */}
+      <Modal
+        visible={declineModal.visible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setDeclineModal({ visible: false, transactionId: null })}
+      >
+        {/* Tapping the dimmed area dismisses the keyboard. Without this there is no way
+            to put it away at all: the sheet is bottom-anchored, the field is multiline
+            so Return inserts a newline rather than submitting, and on Android there is
+            no "Done" key to fall back on. */}
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <KeyboardAvoidingView
+            style={styles.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
+            <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <View style={[styles.modalIconCircle, { backgroundColor: colors.warningBg, alignSelf: 'center' }]}>
+              <TriangleAlert size={24} color={colors.warning} />
+            </View>
+            <Text style={styles.modalTitle}>Decline this item?</Text>
+            <Text style={styles.modalBody}>
+              Only do this before you take the item. The rental is cancelled, the dates are freed,
+              and {otherUserName} will see your reason.
+            </Text>
+
+            <TextInput
+              style={[styles.declineInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
+              placeholder="Why are you declining? e.g. lens is cracked, parts missing…"
+              placeholderTextColor={colors.textMuted}
+              value={declineReason}
+              onChangeText={setDeclineReason}
+              multiline
+              numberOfLines={3}
+            />
+            <Text style={styles.declineHint}>
+              {declineReason.trim().length < DECLINE_REASON_MIN
+                ? `${DECLINE_REASON_MIN - declineReason.trim().length} more characters needed`
+                : 'Reason will be shown to the lender'}
+            </Text>
+
+            <TouchableOpacity
+              style={[
+                styles.modalPrimaryBtn,
+                { backgroundColor: colors.danger },
+                declineReason.trim().length < DECLINE_REASON_MIN && styles.btnDisabled,
+              ]}
+              onPress={confirmDeclineAtPickup}
+              disabled={declineReason.trim().length < DECLINE_REASON_MIN || actionLoading}
+            >
+              <Text style={[styles.modalPrimaryBtnText, { color: colors.white }]}>Decline Item</Text>
+            </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalCancelLink}
+                onPress={() => setDeclineModal({ visible: false, transactionId: null })}
+              >
+                <Text style={styles.modalCancelLinkText}>Keep rental</Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        </TouchableWithoutFeedback>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1337,6 +1465,11 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   modalSecondaryBtnText: { color: colors.primary, fontSize: 14, fontWeight: '600' },
   modalCancelLink: { alignItems: 'center', paddingVertical: 4 },
   modalCancelLinkText: { color: colors.textFaint, fontSize: 14 },
+  declineInput: {
+    borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
+    fontSize: 14, minHeight: 72, textAlignVertical: 'top',
+  },
+  declineHint: { fontSize: 12, color: colors.textFaint, textAlign: 'center', marginTop: -6 },
 
   highlighted: {
     borderColor: colors.primary,

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, ScrollView, Image, Modal, TextInput, Animated,
+  KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
@@ -11,6 +12,8 @@ import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
 import { hasRatedTransaction } from '../services/ratings';
+import { uploadImage, HANDOFF_EVIDENCE_BUCKET, handoffPhotoPath, disputePhotoPath } from '../services/storage';
+import * as Location from 'expo-location';
 import { getCurrentLocationOnce } from '../hooks/useUserLocation';
 import { metersBetween } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
@@ -29,18 +32,22 @@ type Step = 'scan' | 'checklist' | 'photo' | 'done';
 export default function QRScanScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { transactionId, phase, itemTitle, otherName } = route.params;
+  const { transactionId, phase, itemTitle, otherName, conversationId } = route.params;
 
   const [permission, requestPermission] = useCameraPermissions();
   const [checked,    setChecked]    = useState<boolean[]>(CHECKLIST_ITEMS.map(() => false));
   const [step,       setStep]       = useState<Step>('scan');
   const [scannedToken, setScannedToken] = useState<string | null>(null);
   const [scannedFlash, setScannedFlash] = useState(false);
-  const [photoUri,   setPhotoUri]   = useState<string | null>(null);
+  // The whole asset, not just the uri: uploading needs base64 + mimeType, and the
+  // photo used to be held as a uri only and then thrown away at confirm time.
+  const [photoAsset, setPhotoAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const photoUri = photoAsset?.uri ?? null;
   const [processing, setProcessing] = useState(false);
   const [disputeModal, setDisputeModal] = useState<{ visible: boolean; step: 1 | 2 }>({ visible: false, step: 1 });
   const [disputeDone, setDisputeDone] = useState(false);
-  const [disputePhotoUri, setDisputePhotoUri] = useState<string | null>(null);
+  const [disputePhotoAsset, setDisputePhotoAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const disputePhotoUri = disputePhotoAsset?.uri ?? null;
   const [alreadyRated, setAlreadyRated] = useState(false);
   const [disputeText, setDisputeText] = useState('');
   const scoreAnim = useRef(new Animated.Value(0)).current;
@@ -62,9 +69,10 @@ export default function QRScanScreen({ navigation, route }: Props) {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.75,
       allowsEditing: false,
+      base64: true, // required by uploadImage — fetch() yields 0-byte blobs for Expo file URIs on iOS
     });
     if (!result.canceled && result.assets[0]) {
-      setPhotoUri(result.assets[0].uri);
+      setPhotoAsset(result.assets[0]);
     }
   }
 
@@ -79,7 +87,28 @@ export default function QRScanScreen({ navigation, route }: Props) {
     if (!scannedToken) return;
     setProcessing(true);
     try {
-      const { error: condErr } = await supabase.rpc('confirm_condition', { p_tx: transactionId, p_phase: phase });
+      // Upload the condition photo before committing the handoff. The app has always
+      // *required* this photo and then discarded it; it is the only record of what
+      // shape the item was in at handover, and an admin needs it to settle a dispute.
+      //
+      // The path is handed to confirm_condition rather than written with a direct
+      // UPDATE here: at pickup the caller is the renter and the status is 'paid',
+      // which the renter's RLS policy forbids — and an RLS-blocked update reports no
+      // error, so the photo silently never linked to the transaction.
+      let photoPath: string | null = null;
+      if (photoAsset?.base64) {
+        photoPath = await uploadImage(
+          HANDOFF_EVIDENCE_BUCKET,
+          handoffPhotoPath(transactionId, phase),
+          { base64: photoAsset.base64, mimeType: photoAsset.mimeType ?? 'image/jpeg' },
+        );
+      }
+
+      const { error: condErr } = await supabase.rpc('confirm_condition', {
+        p_tx: transactionId,
+        p_phase: phase,
+        p_photo_url: photoPath,
+      });
       if (condErr) throw condErr;
 
       const { error: scanErr } = await supabase.rpc('scan_qr_handoff', {
@@ -127,7 +156,23 @@ export default function QRScanScreen({ navigation, route }: Props) {
 
   async function confirmDispute() {
     try {
-      await supabase.rpc('report_issue', { p_tx: transactionId });
+      // The photo and description collected by this modal used to be dropped —
+      // report_issue took only the transaction id, so a case reached "under review"
+      // carrying no evidence whatsoever.
+      let photoPath: string | null = null;
+      if (disputePhotoAsset?.base64) {
+        photoPath = await uploadImage(
+          HANDOFF_EVIDENCE_BUCKET,
+          disputePhotoPath(transactionId),
+          { base64: disputePhotoAsset.base64, mimeType: disputePhotoAsset.mimeType ?? 'image/jpeg' },
+        );
+      }
+      const { error } = await supabase.rpc('report_issue', {
+        p_tx: transactionId,
+        p_description: disputeText.trim() || null,
+        p_photo_url: photoPath,
+      });
+      if (error) throw error;
       setDisputeDone(true);
     } catch (e: any) {
       Alert.alert('Error', e.message ?? 'Could not submit dispute.');
@@ -149,7 +194,7 @@ export default function QRScanScreen({ navigation, route }: Props) {
       // Proximity is verified here, at scan time, rather than on the final confirm —
       // otherwise the user would fill in the whole checklist before being told they
       // are standing too far apart for the handoff to be accepted.
-      const coords = await getCurrentLocationOnce();
+      const coords = await getCurrentLocationOnce(Location.Accuracy.High);
       if (!coords) {
         Alert.alert('Location needed', `Enable location to verify you are with ${otherName ?? 'the other party'}.`);
         handledRef.current = false;
@@ -157,7 +202,13 @@ export default function QRScanScreen({ navigation, route }: Props) {
       }
       const distance = metersBetween(coords, { latitude: payload.lat, longitude: payload.lng });
       if (distance > PROXIMITY_LIMIT_M) {
-        Alert.alert('Too far apart', `You must be within ${PROXIMITY_LIMIT_M}m of ${otherName ?? 'the other party'} (currently ~${Math.round(distance)}m).`);
+        // Surface the fix quality: a large distance with a large accuracy radius means
+        // a poor GPS fix (indoors, no sky view), not that the parties are really apart.
+        const fix = coords.accuracy ? ` GPS accuracy ±${Math.round(coords.accuracy)}m — move outside for a better fix.` : '';
+        Alert.alert(
+          'Too far apart',
+          `You must be within ${PROXIMITY_LIMIT_M}m of ${otherName ?? 'the other party'} (currently ~${Math.round(distance)}m).${fix}`,
+        );
         handledRef.current = false;
         return;
       }
@@ -213,13 +264,30 @@ export default function QRScanScreen({ navigation, route }: Props) {
               >
                 <Text style={styles.primaryBtnText}>Confirm & Document Condition</Text>
               </TouchableOpacity>
-              {phase === 'return' && (
+              {phase === 'return' ? (
                 <TouchableOpacity
                   style={styles.reportDamageBtn}
                   onPress={() => setDisputeModal({ visible: true, step: 1 })}
                 >
                   <TriangleAlert size={15} color={colors.danger} />
                   <Text style={styles.reportDamageText}>Report Damage Instead</Text>
+                </TouchableOpacity>
+              ) : (
+                /* Pickup needs the opposite of a dispute: the renter simply doesn't take
+                   the item and the rental is cancelled. Routes back to ChatRoomScreen,
+                   which owns the decline action — this screen must not duplicate it. */
+                <TouchableOpacity
+                  style={styles.reportDamageBtn}
+                  onPress={() => navigation.navigate('ChatRoom', {
+                    conversationId,
+                    itemTitle,
+                    otherUserName: otherName ?? 'them',
+                    initialTab: 'deal',
+                    declineTransactionId: transactionId,
+                  })}
+                >
+                  <TriangleAlert size={15} color={colors.danger} />
+                  <Text style={styles.reportDamageText}>Item isn't as described — don't take it</Text>
                 </TouchableOpacity>
               )}
             </>
@@ -376,8 +444,15 @@ export default function QRScanScreen({ navigation, route }: Props) {
         animationType="slide"
         onRequestClose={() => setDisputeModal(prev => ({ ...prev, visible: false }))}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
+        {/* Step 2 of this modal has a multiline description field. Without keyboard
+            handling the sheet sits under the keyboard with no way to dismiss it —
+            Return inserts a newline, and Android has no Done key. */}
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <KeyboardAvoidingView
+            style={styles.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
+            <View style={styles.modalSheet}>
             {disputeDone ? (
               <>
                 <View style={styles.modalHandle} />
@@ -435,8 +510,8 @@ export default function QRScanScreen({ navigation, route }: Props) {
                     onPress={async () => {
                       const { status } = await ImagePicker.requestCameraPermissionsAsync();
                       if (status !== 'granted') return;
-                      const r = await ImagePicker.launchCameraAsync({ quality: 0.75 });
-                      if (!r.canceled && r.assets[0]) setDisputePhotoUri(r.assets[0].uri);
+                      const r = await ImagePicker.launchCameraAsync({ quality: 0.75, base64: true });
+                      if (!r.canceled && r.assets[0]) setDisputePhotoAsset(r.assets[0]);
                     }}
                   >
                     <Camera size={32} color={colors.textMuted} strokeWidth={1.5} />
@@ -468,8 +543,9 @@ export default function QRScanScreen({ navigation, route }: Props) {
                 </TouchableOpacity>
               </>
             )}
-          </View>
-        </View>
+            </View>
+          </KeyboardAvoidingView>
+        </TouchableWithoutFeedback>
       </Modal>
     </SafeAreaView>
   );

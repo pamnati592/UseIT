@@ -10,12 +10,18 @@ import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
 import { hasRatedTransaction } from '../services/ratings';
+import * as Location from 'expo-location';
 import { getCurrentLocationOnce } from '../hooks/useUserLocation';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { type QrPayload } from './qrShared';
 
 type Props = NativeStackScreenProps<ChatsStackParamList, 'QRDisplay'>;
+
+// Statuses that mean this QR will never be scanned: the rental ended by some other
+// route while the code was on screen (renter declined at pickup, lender cancelled,
+// either side raised a dispute).
+const ABORTED_STATUSES = ['cancelled', 'rejected', 'disputed'];
 type Step = 'loading' | 'qr' | 'done';
 
 // TODO: replace with the real computed Impact Score once that feature lands
@@ -30,6 +36,8 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
   const [step,    setStep]    = useState<Step>('loading');
   const [payload, setPayload] = useState<QrPayload | null>(null);
   const [alreadyRated, setAlreadyRated] = useState(false);
+  // Guards the abort alert — the poll would otherwise fire it again on every tick.
+  const abortedRef = useRef(false);
   const scoreAnim = useRef(new Animated.Value(0)).current;
   const pollRef   = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -41,7 +49,11 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
   async function startDisplay() {
     setStep('loading');
     try {
-      const coords = await getCurrentLocationOnce();
+      // High, not the Balanced default: these coordinates are baked into the QR and
+      // become the reference point for the scanner's 50m proximity check. A ~100m
+      // Balanced fix here would make that check meaningless however precise the
+      // scanner's own fix is.
+      const coords = await getCurrentLocationOnce(Location.Accuracy.High);
       if (!coords) {
         Alert.alert('Location needed', 'Enable location so the other party can verify you are together.');
         return;
@@ -79,10 +91,27 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
         .select('status')
         .eq('id', transactionId)
         .single();
-      if (data?.status === successStatus) setStep('done');
+      if (!data) return;
+
+      if (data.status === successStatus) { setStep('done'); return; }
+
+      // The rental ended while this QR was still on screen — most often the renter
+      // declining the item at the handoff. The code can no longer be scanned, so get
+      // the holder off this screen instead of leaving them presenting a dead QR.
+      if (ABORTED_STATUSES.includes(data.status) && !abortedRef.current) {
+        abortedRef.current = true;
+        if (pollRef.current) clearInterval(pollRef.current);
+        Alert.alert(
+          phase === 'pickup' ? 'Handoff cancelled' : 'Rental ended',
+          phase === 'pickup'
+            ? `${otherName ?? 'The renter'} declined the item, so this rental was cancelled. Their reason is in the chat.`
+            : 'This rental is no longer active — see the chat for details.',
+          [{ text: 'OK', onPress: () => { if (navigation.canGoBack()) navigation.goBack(); } }],
+        );
+      }
     }, 3000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [step, transactionId, successStatus]);
+  }, [step, transactionId, successStatus, phase, otherName]);
 
   // Animate the score bar when the return celebration appears
   useEffect(() => {
