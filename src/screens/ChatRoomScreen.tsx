@@ -32,9 +32,11 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string }> 
   cancelled: { label: 'Cancelled', color: '#6b7280', bg: 'rgba(107,114,128,0.15)' },
 };
 
-// Same idea for purchase cards — a purchase only ever has these three states.
+// Same idea for purchase cards — mirrors the rental pending -> approved/rejected -> paid flow.
 const PURCHASE_STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
   pending:   { label: 'Pending',    color: '#b45309', bg: 'rgba(245,158,11,0.15)' },
+  approved:  { label: 'Approved',   color: '#15803d', bg: 'rgba(34,197,94,0.15)' },
+  rejected:  { label: 'Declined',   color: '#b91c1c', bg: 'rgba(239,68,68,0.15)' },
   paid:      { label: 'Purchased',  color: '#15803d', bg: 'rgba(34,197,94,0.15)' },
   cancelled: { label: 'Cancelled',  color: '#6b7280', bg: 'rgba(107,114,128,0.15)' },
 };
@@ -62,7 +64,7 @@ type Purchase = {
   buyer_id: string;
   seller_id: string;
   price: number;
-  status: 'pending' | 'paid' | 'cancelled';
+  status: 'pending' | 'approved' | 'rejected' | 'paid' | 'cancelled';
   created_at: string;
 };
 
@@ -673,6 +675,32 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     }
   }
 
+  async function handleApprovePurchase(purchaseId: string) {
+    setActionLoading(true);
+    try {
+      const { error } = await supabase.rpc('approve_purchase', { p_purchase: purchaseId });
+      if (error) throw error;
+      setPurchases(prev => ({ ...prev, [purchaseId]: { ...prev[purchaseId], status: 'approved' } }));
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleRejectPurchase(purchaseId: string) {
+    setActionLoading(true);
+    try {
+      const { error } = await supabase.rpc('reject_purchase', { p_purchase: purchaseId });
+      if (error) throw error;
+      setPurchases(prev => ({ ...prev, [purchaseId]: { ...prev[purchaseId], status: 'rejected' } }));
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   function handleCancelPurchase(purchaseId: string) {
     Alert.alert(
       'Cancel this purchase?',
@@ -779,6 +807,32 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
           <View style={styles.requestStatus}>
             {purchase.status === 'pending' && (
               isLender ? (
+                <View style={styles.requestActions}>
+                  <TouchableOpacity
+                    style={[styles.approveBtn, actionLoading && styles.btnDisabled]}
+                    onPress={() => handleApprovePurchase(purchase.id)}
+                    disabled={actionLoading}
+                  >
+                    {actionLoading
+                      ? <ActivityIndicator color={colors.btnText} size="small" />
+                      : <><Check size={16} color={colors.btnText} strokeWidth={2.5} /><Text style={styles.approveBtnText}>Approve</Text></>
+                    }
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.rejectBtn, actionLoading && styles.btnDisabled]}
+                    onPress={() => handleRejectPurchase(purchase.id)}
+                    disabled={actionLoading}
+                  >
+                    <X size={16} color={colors.textSecondary} strokeWidth={2.5} />
+                    <Text style={styles.rejectBtnText}>Decline</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <Text style={styles.helperText}>⏳ Waiting for {otherUserName} to approve your request.</Text>
+              )
+            )}
+            {purchase.status === 'approved' && (
+              isLender ? (
                 <View style={styles.approvedRow}>
                   <Text style={[styles.helperText, styles.helperTextFlex]}>Waiting for {otherUserName} to pick up and pay.</Text>
                   <TouchableOpacity
@@ -804,6 +858,9 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                   </TouchableOpacity>
                 </>
               )
+            )}
+            {purchase.status === 'rejected' && (
+              <Text style={styles.helperText}>❌ This request was declined.</Text>
             )}
             {purchase.status === 'paid' && (
               <Text style={styles.helperText}>✅ Purchased — thanks for using UseIT.</Text>

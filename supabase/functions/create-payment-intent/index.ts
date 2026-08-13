@@ -71,8 +71,8 @@ serve(async (req) => {
       if (purchase.buyer_id !== user.id) {
         return new Response(JSON.stringify({ error: 'Not authorized' }), { status: 403, headers: corsHeaders });
       }
-      if (purchase.status !== 'pending') {
-        return new Response(JSON.stringify({ error: 'Purchase is not pending' }), { status: 400, headers: corsHeaders });
+      if (purchase.status !== 'approved') {
+        return new Response(JSON.stringify({ error: 'Purchase is not approved yet' }), { status: 400, headers: corsHeaders });
       }
       amount = Math.round(purchase.price * 100);
       metadata = { purchase_id, buyer_id: user.id };

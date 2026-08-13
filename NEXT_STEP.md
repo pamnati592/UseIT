@@ -4,22 +4,31 @@
 
 **Context:** DB access is via the Supabase MCP. The access token was rotated on **2026-08-13** and now lives in the `env` block (`SUPABASE_ACCESS_TOKEN`) of the `supabase` entry in `~/.claude.json`, not as a `--access-token` flag. If MCP calls return `Unauthorized`, the token has expired again — regenerate at https://supabase.com/dashboard/account/tokens and re-add with `claude mcp add supabase -s user -e SUPABASE_ACCESS_TOKEN=... -- npx -y @supabase/mcp-server-supabase@latest`, then **restart Claude Code** (MCP servers only read config at startup).
 
-## 🟡 ONE STEP LEFT — needs a real device (2026-08-13)
+## ✅ Backlog Z step 1 is closed — PaymentIntent persistence proven on both paths (2026-08-13)
 
-`create-payment-intent` **is now deployed** (version 7, deployed 2026-08-13 via MCP; version 6 was the stale copy without the persistence block). The deployed source was re-fetched and diffed against disk — they match.
+One real rental payment and one real purchase payment were made on the iPhone and verified in the table, not the UI:
 
-**What is still unproven:** no payment has been made since the deploy, so the write itself has never executed. Do this on the next two-device run:
+```
+transactions: id 304273bf-... · status paid · stripe_payment_intent_id pi_3U3uZwHZSeCIslMV0MjlWzqB
+purchases:    id 5d760f74-... · status paid · stripe_payment_intent_id pi_3U3uxaHZSeCIslMV0FW8i3OU
+```
 
-1. Make one test payment (rental **and** purchase — they take different code paths, `transactions` vs `purchases`).
-2. Verify in the table, not the UI:
-   ```sql
-   select id, status, stripe_payment_intent_id from transactions where stripe_payment_intent_id is not null;
-   select id, status, stripe_payment_intent_id from purchases    where stripe_payment_intent_id is not null;
-   ```
-   Both columns exist and are `text`; both were confirmed 0-populated before this deploy.
-3. If the write fails, the function now **cancels the intent and returns a 500** rather than taking money it could never refund — so the symptom will be a failed payment, not a silent loss. Check the edge-function logs.
+**Next: step 2, the `refund-payment` edge function**, calling `stripe.refunds.create`, then the 24h/4h tier calculation from spec 4.10, then a refund record for auditability. Existing pre-2026-08-13 rows are still unrecoverable (no intent id was ever captured for them) — that's unchanged.
 
-Only then is backlog **Z** step 1 genuinely closed, and step 2 (`refund-payment` edge function) can start.
+### 🆕 Purchases now require seller approval before payment (2026-08-13, unplanned but requested mid-session)
+Found while doing the Z verification: purchases had **no approval step at all** — `create_purchase` went straight to a payable "pending" state, unlike rentals which need an explicit lender approval first. User asked for parity. Added:
+- `purchase_status` enum gained `approved` / `rejected` (migration `purchase_approval_enum.sql` — enum values had to land in their own transaction before anything could reference them, per Postgres rules).
+- New RPCs `approve_purchase` / `reject_purchase` (seller-only, mirrors `cancel_purchase`'s SECURITY DEFINER pattern) in `purchase_approval_rpcs.sql`. `mark_purchase_paid` now requires `status = 'approved'` (was `'pending'`); `cancel_purchase` now allows either `pending` or `approved`.
+- `ChatRoomScreen.tsx`: seller sees Approve/Decline on a pending purchase (same styling as the rental Approve/Decline buttons); buyer sees a waiting message until approved, then the existing "I Have the Item — Pay Now" button.
+
+**Two real bugs found and fixed while testing this end-to-end:**
+1. **Purchase payment always failed with "Purchase is not pending"** — `create-payment-intent/index.ts` still gated the purchase branch on `status !== 'pending'`, never updated to match the new `'approved'` gate. This was the actual blocker, not a stale client bundle (that was my wrong first guess — cost a round trip). Fixed and redeployed, **now version 8**.
+2. **Duplicate Buy requests** — tapping Buy twice on the same item created two separate purchase rows with no dedup, unlike rentals. `create_purchase` (migration `purchase_dedupe_request.sql`) now checks for an existing `pending`/`approved` purchase from the same buyer on the same item first and returns that one instead of inserting a duplicate — the client already just navigates wherever the RPC points it, so no client change was needed.
+3. **Side finding, same session:** `create_purchase`'s "wants to buy" message (and the new approve/reject messages) were being inserted into `public.messages` with `transaction_id = null`. `messages.transaction_id` has a hard FK to `transactions(id)` — it can never point at a `purchases` row — so these rows were indistinguishable from real chat and leaked into the plain Chat tab. Fixed (migration `purchase_events_no_chat_leak.sql`): purchase lifecycle events now only update `conversations.last_message`/`last_message_at` for the preview/badge; the Deal Board card doesn't need a message row since it already has its own realtime subscription directly on `purchases`.
+
+**Test data note:** `items.sale_price` was `null` on every single item — nothing was buyable. `cc000000-0000-0000-0000-000000000004` (Bosch Power Drill Set, owned by Nati) was given `sale_price = 350` directly via SQL purely so the purchase flow had something to test against. It's since gone through two test purchase cycles and is now `paid`/`is_hidden = true` (sold). Not a real listing — don't treat its price as product data.
+
+**None of this touched migrations before 2026-08-13** — the enum/RPC/edge-function changes are additive to the purchases flow only.
 
 ### ✅ Backlog X duplicate-dispute guard is done and verified (2026-08-13)
 
