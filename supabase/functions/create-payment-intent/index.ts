@@ -87,6 +87,36 @@ serve(async (req) => {
       description,
     });
 
+    // Record which Stripe payment belongs to this rental/purchase. Without it there
+    // is no link between the two, and a refund becomes impossible — not just from the
+    // app, but even by hand in the Stripe dashboard. The columns already existed and
+    // were simply never written, leaving 21 unrefundable transactions behind.
+    //
+    // Uses the service role rather than the request-scoped client above: that one is
+    // subject to RLS, and "transactions: renter updates own" only permits status IN
+    // ('pending','approved') — the same kind of policy that has already silently
+    // swallowed a write in this project. This is server bookkeeping, not a user
+    // action, so it should not depend on the caller's policy surface.
+    const admin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    const { error: linkError } = transaction_id
+      ? await admin.from('transactions').update({ stripe_payment_intent_id: paymentIntent.id }).eq('id', transaction_id)
+      : await admin.from('purchases').update({ stripe_payment_intent_id: paymentIntent.id }).eq('id', purchase_id);
+
+    if (linkError) {
+      // Fail the payment rather than take money we could never refund. Nothing has
+      // been charged yet — the intent is still awaiting a payment method — so
+      // cancelling it here is clean and the user simply retries.
+      await stripe.paymentIntents.cancel(paymentIntent.id).catch(() => {});
+      return new Response(
+        JSON.stringify({ error: 'Could not record the payment. Please try again.' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     return new Response(
       JSON.stringify({ client_secret: paymentIntent.client_secret }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

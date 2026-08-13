@@ -2,19 +2,47 @@
 
 ## Resume here
 
-**Context:** DB access via Supabase MCP is confirmed live (verified 2026-07-13, project `ACTIVE_HEALTHY`) — no need to re-verify at the start of a session.
+**Context:** DB access is via the Supabase MCP. The access token was rotated on **2026-08-13** and now lives in the `env` block (`SUPABASE_ACCESS_TOKEN`) of the `supabase` entry in `~/.claude.json`, not as a `--access-token` flag. If MCP calls return `Unauthorized`, the token has expired again — regenerate at https://supabase.com/dashboard/account/tokens and re-add with `claude mcp add supabase -s user -e SUPABASE_ACCESS_TOKEN=... -- npx -y @supabase/mcp-server-supabase@latest`, then **restart Claude Code** (MCP servers only read config at startup).
 
-### ✅ The QR handoff is now verified on two real devices (2026-08-09)
+## 🔴 UNFINISHED — do this first (2026-08-13)
 
-This was the open blocker at the top of this file for three weeks. It is closed. A full rental (`Bosch Power Drill Set`, Nati → Ori) ran the whole lifecycle on an iPhone 12 Pro + Galaxy S20 FE with two separate logins: **request → approve → pay → pickup QR → active → return QR → completed → both parties rated.** The role flip is correct in both phases, and the 50m proximity check was proven to genuinely reject (see **Y**), not merely pass by default.
+**An edge-function change is written but NOT DEPLOYED, and it is uncommitted.**
 
-Six bugs surfaced and are fixed — see the 2026-08-09 entries under Done.
+`supabase/functions/create-payment-intent/index.ts` was modified to persist `stripe_payment_intent_id` onto the transaction/purchase after creating the Stripe PaymentIntent. **The file on disk is not what runs** — Supabase runs the deployed copy. Until it is deployed, every payment still loses its Stripe id and becomes unrefundable (backlog **Z**).
 
-**Next session — start here:**
+Steps to finish:
+1. Deploy it — `deploy_edge_function` via MCP (needs the token above), or `supabase functions deploy create-payment-intent` if the CLI gets installed (`brew install supabase/tap/supabase`; it is **not** installed as of 2026-08-13).
+2. Make one test payment, then confirm `transactions.stripe_payment_intent_id` is actually populated. Do not trust the UI — verify in the table.
+3. Commit. Uncommitted at `237d7f0`: `NEXT_STEP.md`, `src/screens/QRScanScreen.tsx` (dispute double-submit guard), `supabase/functions/create-payment-intent/index.ts`.
 
-1. **T is the biggest hole.** Every condition photo and every dispute photo the app collects is thrown away. A dispute currently reaches "Case Under Review" carrying no evidence whatsoever. It also blocks **U**, since an admin console has nothing to adjudicate. Needs a Storage bucket + RLS + schema before any UI.
-2. **X is a batch of ~30-minute cleanups** (notification sound spam, a 404 item photo, 11 stale June transactions, the missing handoff system message) — good for warming up or for a short session.
-3. A **Polaroid transaction is parked at `paid`** (`00ab7764`, Ori lends → Nati rents, 26–28 Aug) if you want a ready-made handoff to test against without setting one up.
+Also still pending, needs migrations (was blocked on the dead token): the partial unique index on `disputes` from **X**, and cleanup of the 2 duplicate dispute rows on transaction `d9d6fea4`.
+
+### ✅ Backlog T is complete and verified end-to-end (2026-08-12)
+
+Handoff and dispute evidence is now stored and retrievable. Verified by querying the DB and fetching the files, **not** by watching the UI:
+
+| Evidence | Verified |
+|---|---|
+| Pickup condition photo | `pickup_photo_url` set on `5af6ad8d`; file fetched, 238 KB real JPEG 1816×4032 |
+| Return condition photo | `return_photo_url` set on 2 transactions |
+| Dispute photo + description | `disputes` row with both; file fetched, 2.7 MB JPEG 3024×4032 with camera EXIF |
+| Storage RLS | A party can mint a signed URL for their own evidence |
+| Decline at pickup + reason | 2 records, reason captured, min-length gate works |
+
+### ✅ The QR handoff is verified on two real devices (2026-08-09)
+
+A full rental (`Bosch Power Drill Set`, Nati → Ori) ran the whole lifecycle on an iPhone 12 Pro + Galaxy S20 FE with two separate logins: **request → approve → pay → pickup QR → active → return QR → completed → both parties rated.** The role flip is correct in both phases, and the 50m proximity check was proven to genuinely reject, not merely pass by default.
+
+**After the edge function is deployed, the next real piece of work is U (admin console)** — now genuinely unblocked, since disputes finally carry evidence to adjudicate. Note it starts with a role column and an RLS rewrite, not a screen: every policy today is scoped to `auth.uid()` being a party, so an admin literally cannot read anyone else's rows.
+
+## ⚠️ Lesson worth keeping: verify in the database, not the UI
+
+Two bugs this week were **invisible from the app** — the screen showed success while the data was being discarded:
+
+1. **The pickup photo** uploaded to storage but never linked to its transaction. `transactions: renter updates own` only permits status `pending`/`approved`, but a pickup happens at `paid`, so the UPDATE matched zero rows. **An RLS-blocked update returns no error in supabase-js** — it just affects nothing. Fixed by moving the write into `confirm_condition` (SECURITY DEFINER).
+2. **Duplicate disputes** — two rows 0.6s apart with two separate photo uploads, because the Submit button had no in-flight guard while the photo uploaded.
+
+Neither was findable by tapping through the app. After any flow that writes data, query the table.
 
 **Two-device setup notes (so this isn't re-derived):**
 - Android toolchain is Zulu JDK 17 + Android command-line tools — **no Android Studio needed**. `ANDROID_HOME=/opt/homebrew/share/android-commandlinetools`.
@@ -22,7 +50,19 @@ Six bugs surfaced and are fixed — see the 2026-08-09 entries under Done.
 - The iPhone reaches Metro over Wi-Fi only; USB is for installing. Free Apple personal team ⇒ **the build expires after 7 days**, re-run `npx expo run:ios --device` to refresh.
 - After any `npx expo prebuild`, re-run `plutil -remove aps-environment ios/SwipeAndRent/SwipeAndRent.entitlements` — prebuild re-adds a push entitlement a free team cannot sign, and the app only uses local notifications.
 
-**⚠️ The two migrations from 2026-08-09 are already applied to the live project** (`add_transactions_purchases_to_realtime`, `submit_rating_reject_duplicate`). Anyone running this code against a *different* Supabase project must apply them, or realtime status updates will silently not work there.
+**⚠️ Seven migrations are already applied to the live project and are NOT in the repo as files.** Anyone running this code against a *different* Supabase project must recreate them, or realtime updates, photo evidence and the decline flow will all silently fail:
+
+| Migration | Date |
+|---|---|
+| `add_transactions_purchases_to_realtime` | 2026-08-09 |
+| `submit_rating_reject_duplicate` | 2026-08-09 |
+| `handoff_evidence_bucket` | 2026-08-11 |
+| `handoff_photos_and_disputes` | 2026-08-11 |
+| `report_issue_with_evidence` | 2026-08-11 |
+| `decline_at_pickup` | 2026-08-11 |
+| `confirm_condition_records_photo` | 2026-08-12 |
+
+Worth considering: dumping these into `supabase/migrations/` so the schema is reproducible from the repo alone. Right now the live DB is the only source of truth for them.
 
 ---
 
@@ -149,6 +189,7 @@ When you build the QR flow, wire any status change (item handed over, item retur
 - **11 stale June transactions** — duplicate `Canon EOS R5` requests from 2026-06-11, all left `approved`, all Ori→Nati. They clutter the Deal Board and make real test transactions hard to find. Cancel the pre-August ones.
 - **QR handoff writes no system message** — `QRScanScreen` never calls `insertSystemMessage`, so pickup and return produce **no Badge Jump** and leave the chat-list preview stuck on the previous status. `NEXT_STEP.md` already called for this ("wire any status change (item handed over, item returned) through `insertSystemMessage()`"); it was never implemented. Suggested previews: `📦 Item handed over · Rental active`, `✅ Item returned · Rental complete`.
 - **`submit_item_review` may allow duplicates** — `submit_rating` was hardened on 2026-08-09 to reject a second rating, but `submit_item_review` was not inspected. Check whether it upserts the same way and needs the same guard.
+- **Duplicate disputes need a DB-level guard** — a real test on 2026-08-12 produced **two** dispute rows 0.6s apart for transaction `d9d6fea4`, each with its own uploaded photo, because the Submit button had no in-flight guard while the photo uploaded. The client guard is fixed, but a client guard is not a constraint: add a partial unique index (e.g. `unique (transaction_id) where status = 'open'`) so a retry or a second device cannot open two live cases on one rental. The two duplicate rows are still in the table and should be cleaned up — note `disputes` currently has only a SELECT policy, so deletion needs the service role or a new policy.
 
 ### Y. Proximity check — GPS accuracy (root cause found & fixed 2026-08-11)
 - **Root cause:** `getCurrentLocationOnce` requested `Location.Accuracy.Balanced`, which expo-location documents as *"accurate to within one hundred meters"* — Wi-Fi/network derived, not a real GPS fix. The proximity threshold is **50m**, so the error budget was **double the limit being enforced**. Two phones touching each other could read anywhere from 0m to 150m apart. The ~19m measured on 2026-08-09 was luck, and on 2026-08-11 the same two phones side by side failed the check outright.

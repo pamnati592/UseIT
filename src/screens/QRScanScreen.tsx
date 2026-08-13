@@ -46,6 +46,7 @@ export default function QRScanScreen({ navigation, route }: Props) {
   const [processing, setProcessing] = useState(false);
   const [disputeModal, setDisputeModal] = useState<{ visible: boolean; step: 1 | 2 }>({ visible: false, step: 1 });
   const [disputeDone, setDisputeDone] = useState(false);
+  const [disputeSubmitting, setDisputeSubmitting] = useState(false);
   const [disputePhotoAsset, setDisputePhotoAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const disputePhotoUri = disputePhotoAsset?.uri ?? null;
   const [alreadyRated, setAlreadyRated] = useState(false);
@@ -155,6 +156,10 @@ export default function QRScanScreen({ navigation, route }: Props) {
   );
 
   async function confirmDispute() {
+    // Uploading the photo takes long enough to tap Submit twice, and on 2026-08-12 a
+    // real test produced two dispute rows 0.6s apart with two separate uploads.
+    if (disputeSubmitting) return;
+    setDisputeSubmitting(true);
     try {
       // The photo and description collected by this modal used to be dropped —
       // report_issue took only the transaction id, so a case reached "under review"
@@ -176,6 +181,8 @@ export default function QRScanScreen({ navigation, route }: Props) {
       setDisputeDone(true);
     } catch (e: any) {
       Alert.alert('Error', e.message ?? 'Could not submit dispute.');
+    } finally {
+      setDisputeSubmitting(false);
     }
   }
 
@@ -531,12 +538,18 @@ export default function QRScanScreen({ navigation, route }: Props) {
                 />
 
                 <TouchableOpacity
-                  style={[styles.modalPrimaryBtn, { backgroundColor: colors.danger, opacity: (!disputePhotoUri || !disputeText.trim()) ? 0.45 : 1 }]}
+                  style={[styles.modalPrimaryBtn, { backgroundColor: colors.danger, opacity: (!disputePhotoUri || !disputeText.trim() || disputeSubmitting) ? 0.45 : 1 }]}
                   onPress={confirmDispute}
-                  disabled={!disputePhotoUri || !disputeText.trim()}
+                  disabled={!disputePhotoUri || !disputeText.trim() || disputeSubmitting}
                 >
-                  <Scale size={16} color={colors.white} />
-                  <Text style={[styles.modalPrimaryBtnText, { color: colors.white }]}>Submit Dispute</Text>
+                  {disputeSubmitting ? (
+                    <ActivityIndicator color={colors.white} />
+                  ) : (
+                    <>
+                      <Scale size={16} color={colors.white} />
+                      <Text style={[styles.modalPrimaryBtnText, { color: colors.white }]}>Submit Dispute</Text>
+                    </>
+                  )}
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.modalSecondaryBtn} onPress={() => setDisputeModal(prev => ({ ...prev, step: 1 }))}>
                   <Text style={styles.modalSecondaryBtnText}>← Go back</Text>
