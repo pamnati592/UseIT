@@ -395,10 +395,20 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     return Math.round((b.getTime() - a.getTime()) / 86_400_000) + 1;
   }
 
+  // Cancellation is always allowed pre-pickup (approved/paid) — the 24h/4h
+  // spec 4.8 tiers control the refund amount, not whether cancel is offered.
+  // end_date guards against a stale row whose window has already passed.
   function canCancelTx(tx: Transaction): boolean {
-    const now = Date.now();
-    if (new Date(tx.end_date).getTime() < now) return false;
-    return new Date(tx.start_date).getTime() - now > 48 * 60 * 60 * 1000;
+    return new Date(tx.end_date).getTime() > Date.now();
+  }
+
+  // Mirrors refund-payment's server-side tier so the confirmation dialog shows
+  // the real number before the user commits — the server remains authoritative.
+  function refundTierLabel(startDate: string): string {
+    const hoursUntilStart = (new Date(startDate).getTime() - Date.now()) / 3_600_000;
+    if (hoursUntilStart >= 24) return 'a full refund';
+    if (hoursUntilStart >= 4) return 'a 75% refund';
+    return 'no refund — this is within 4 hours of the rental start';
   }
 
   // Update conversation timestamp BEFORE inserting the message so that when the
@@ -424,13 +434,13 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   async function handleCancel(transactionId: string) {
     const tx = transactions[transactionId];
     if (!tx) return;
-    const isPaid = tx.status === 'active';
+    const isPaid = tx.status === 'paid';
     const dateRef = formatDateRange(tx);
 
     Alert.alert(
       'Cancel this rental?',
       isPaid
-        ? `${dateRef} will be cancelled and the renter will receive a full refund.`
+        ? `${dateRef} will be cancelled. The renter will receive ${refundTierLabel(tx.start_date)}.`
         : `${dateRef} will be cancelled. No payment has been taken yet.`,
       [
         { text: 'Keep booking', style: 'cancel' },
@@ -451,9 +461,21 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                 [transactionId]: { ...prev[transactionId], status: 'cancelled' },
               }));
 
-              const msg = isPaid
-                ? `⚠️ Your rental (${dateRef}) has been cancelled by the lender. You will receive a full refund.`
-                : `⚠️ Your booking request (${dateRef}) has been cancelled by the lender. No payment was taken.`;
+              let refundMsg = 'No payment was taken.';
+              if (isPaid) {
+                const { data, error: refundError } = await supabase.functions.invoke('refund-payment', {
+                  body: { transaction_id: transactionId, reason: 'lender_cancelled' },
+                });
+                if (refundError) throw refundError;
+                const pct = data?.percentage ?? 0;
+                refundMsg = pct === 100
+                  ? 'You will receive a full refund.'
+                  : pct > 0
+                    ? `You will receive a ${pct}% refund.`
+                    : 'No refund applies — this was cancelled less than 4 hours before the rental start.';
+              }
+
+              const msg = `⚠️ Your rental (${dateRef}) has been cancelled by the lender. ${refundMsg}`;
               await insertSystemMessage(msg, transactionId, '⚠️ Rental cancelled');
             } catch (e: any) {
               Alert.alert('Error', e.message);
@@ -540,11 +562,19 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       setTransactions(prev => ({ ...prev, [transactionId]: { ...prev[transactionId], status: 'cancelled' } }));
       const tx = transactions[transactionId];
       const dateRef = tx ? ` (${formatDateRange(tx)})` : '';
+
+      // The renter never took the item, so this is a full refund regardless of
+      // timing — not a cancellation-tier case.
+      const { error: refundError } = await supabase.functions.invoke('refund-payment', {
+        body: { transaction_id: transactionId, reason: 'declined_at_pickup' },
+      });
+      const refundMsg = refundError ? '' : ' You will receive a full refund.';
+
       // The reason goes into the chat, not just the disputes table: a decline that the
       // lender can see and answer is a much stronger deterrent to casual cancellation
       // than one that silently disappears into an admin queue.
       await insertSystemMessage(
-        `⚠️ ${currentUserName} declined the item at pickup${dateRef}. Reason: "${reason}". The rental was cancelled and the dates are free again.`,
+        `⚠️ ${currentUserName} declined the item at pickup${dateRef}. Reason: "${reason}". The rental was cancelled and the dates are free again.${refundMsg}`,
         transactionId,
         '⚠️ Item declined at pickup',
       );

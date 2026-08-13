@@ -28,6 +28,22 @@ Found while doing the Z verification: purchases had **no approval step at all** 
 
 **Test data note:** `items.sale_price` was `null` on every single item — nothing was buyable. `cc000000-0000-0000-0000-000000000004` (Bosch Power Drill Set, owned by Nati) was given `sale_price = 350` directly via SQL purely so the purchase flow had something to test against. It's since gone through two test purchase cycles and is now `paid`/`is_hidden = true` (sold). Not a real listing — don't treat its price as product data.
 
+## ✅ Backlog Z step 2 is done — `refund-payment` edge function shipped (2026-08-13)
+
+- New `refunds` table (transaction_id unique, amount, percentage, reason, stripe_refund_id, RLS-scoped to the two parties) — every refund is now auditable, not just a Stripe API call nobody can trace back.
+- New edge function `refund-payment` (v1): computes spec 4.8's tier (24h+ = 100%, 4–24h = 75%, <4h = 0%) from `start_date`, calls `stripe.refunds.create`, records the row. Idempotent — a retry returns the existing refund instead of double-refunding.
+- Two real bugs fixed on the way, found because the refund feature made them visible:
+  1. `canCancelTx` was **blocking Cancel entirely** under 48h before `start_date` — contradicted spec 4.8, which expects cancellation to always be possible, just at a shrinking refund %. Now only blocks once `end_date` has passed.
+  2. `handleCancel`'s `isPaid` check tested `tx.status === 'active'`, but money is taken at `'paid'` — and there's no Cancel button once a rental reaches `'active'` (confirmed: cancellation is only ever meaningful pre-pickup, once the item is physically handed over it's dispute territory, not cancellation). Fixed to check `'paid'`.
+- Wired into both real cancellation paths: `handleCancel` (lender cancels a paid rental, tiered refund) and `confirmDeclineAtPickup` (renter declines at pickup — always 100%, since they never took the item; this isn't a timing case).
+- **Not yet tested on a real device** — no real cancellation + refund has been run end-to-end yet. Do that on the next two-device session: cancel a paid rental at each of the three timing windows (or fake it by backdating a test transaction's `start_date`) and confirm the `refunds` row + Stripe dashboard match.
+
+### 🆕 Sale/rental conflict guard on purchase approval (2026-08-13)
+Requested: a seller shouldn't be able to approve a sale on an item that's already committed to a future rental (double-committing the physical item). `approve_purchase` now checks for any `approved`/`paid`/`active` rental on the item with `end_date > now()` before approving, and raises a clear error naming the conflicting dates if one exists — the seller must resolve the rental first. (Item-hiding-on-sale was already correct and needed no fix: `mark_purchase_paid` already sets `is_hidden = true`, and `get_feed` already filters `is_hidden = false` — verified against the test purchase.)
+
+### 🆕 Legacy system messages leaking into the Chat tab (2026-08-13)
+User caught this from a screenshot: old rental status messages ("✅ Request approved...", "❌ Request declined...", "💳 Payment completed...") were showing up in the plain Chat tab, mixed in with real typed messages. Root cause: 12 demo/seed messages had `transaction_id = null` — the Chat tab only excludes messages that *have* a `transaction_id`, and a prior migration (`20260510_backfill_message_transaction_id.sql`) meant to backfill exactly this had missed them (likely seeded with fabricated past `created_at` timestamps *after* that migration ran). Re-ran the same match-by-date logic (migration `20260813_backfill_message_transaction_id_v2.sql`) — all 12 matched cleanly to a real transaction, no orphans needed deleting. Current code (`insertSystemMessage`) already tags every new system message correctly, so this was pure historical cleanup, not a live bug — same root-cause class as the purchase-message leak fixed earlier this session, just on the rental side and pre-existing rather than newly introduced.
+
 **None of this touched migrations before 2026-08-13** — the enum/RPC/edge-function changes are additive to the purchases flow only.
 
 ### ✅ Backlog X duplicate-dispute guard is done and verified (2026-08-13)
