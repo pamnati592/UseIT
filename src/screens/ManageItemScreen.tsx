@@ -98,6 +98,9 @@ export default function ManageItemScreen({ navigation, route }: Props) {
   const [selStart, setSelStart] = useState<string | null>(null);
   const [selEnd,   setSelEnd]   = useState<string | null>(null);
   const [saving,   setSaving]   = useState(false);
+  // See the calendar below — the back arrow is disabled at minDate so RTL cannot
+  // strand the user on the current month.
+  const [visibleMonth, setVisibleMonth] = useState(TODAY.slice(0, 7));
 
   useEffect(() => { loadData(); }, []);
 
@@ -259,6 +262,13 @@ export default function ManageItemScreen({ navigation, route }: Props) {
             markedDates={markedDates}
             onDayPress={onDayPress}
             minDate={TODAY}
+            // Under RTL the header row flips and the arrow that reads as "next" moves
+            // the calendar backwards, into a month minDate has greyed out entirely.
+            // Disabling the back arrow at minDate kills the dead direction; swipe is a
+            // fallback that does not depend on the arrows at all.
+            onMonthChange={m => setVisibleMonth(`${m.year}-${String(m.month).padStart(2, '0')}`)}
+            disableArrowLeft={visibleMonth <= TODAY.slice(0, 7)}
+            enableSwipeMonths
             theme={{
               backgroundColor: colors.bg,
               calendarBackground: colors.bg,

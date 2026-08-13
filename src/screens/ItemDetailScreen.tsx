@@ -88,6 +88,11 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
 
   const [rentModalVisible, setRentModalVisible] = useState(!!(prefilledStart || openRent));
 
+  // Tracks the month the calendar is showing, so the "previous" arrow can be
+  // disabled once we are at minDate. onMonthChange fires on mount too, so this
+  // initial value is only ever used for the first render.
+  const [visibleMonth, setVisibleMonth] = useState(TODAY.slice(0, 7));
+
   useEffect(() => {
     if (openRent || prefilledStart) openRentModal();
     supabase
@@ -553,6 +558,16 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
             markedDates={markedDates}
             onDayPress={onDayPress}
             minDate={TODAY}
+            // react-native-calendars flips its header row under I18nManager.isRTL,
+            // which is true on Android with a Hebrew device locale but false on iOS
+            // (no Hebrew localization bundle). The arrow that reads as "next" is then
+            // wired to the previous month, which minDate greys out entirely — so the
+            // calendar looks stuck on the current month. Disabling the back arrow at
+            // minDate removes the dead direction, and swipe gives a second way through
+            // that does not depend on hitting the right arrow at all.
+            onMonthChange={m => setVisibleMonth(`${m.year}-${String(m.month).padStart(2, '0')}`)}
+            disableArrowLeft={visibleMonth <= TODAY.slice(0, 7)}
+            enableSwipeMonths
             theme={{
               backgroundColor: colors.bg,
               calendarBackground: colors.bg,

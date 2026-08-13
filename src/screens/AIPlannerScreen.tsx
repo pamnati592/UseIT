@@ -83,6 +83,9 @@ export default function AIPlannerScreen() {
   const [endDate, setEndDate] = useState<string | null>(null);
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [pickingStart, setPickingStart] = useState(true);
+  // See the calendar below — the back arrow is disabled at minDate so RTL cannot
+  // strand the user on the current month.
+  const [visibleMonth, setVisibleMonth] = useState(TODAY.slice(0, 7));
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<ResultItem[] | null>(null);
   const [checklist, setChecklist] = useState<Record<string, ChecklistStatus>>({});
@@ -323,6 +326,13 @@ export default function AIPlannerScreen() {
               onDayPress={onDayPress}
               markingType="period"
               markedDates={markedDates}
+              // Under RTL the header row flips and the arrow that reads as "next" moves
+              // the calendar backwards, into a month minDate has greyed out entirely.
+              // Disabling the back arrow at minDate kills the dead direction. Swipe is
+              // RTL-aware in the library itself, so it is the reliable way through.
+              onMonthChange={m => setVisibleMonth(`${m.year}-${String(m.month).padStart(2, '0')}`)}
+              disableArrowLeft={visibleMonth <= TODAY.slice(0, 7)}
+              enableSwipeMonths
               theme={{
                 backgroundColor: colors.surface,
                 calendarBackground: colors.surface,
