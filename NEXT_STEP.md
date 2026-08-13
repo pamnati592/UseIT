@@ -48,9 +48,17 @@ Requested: a seller shouldn't be able to approve a sale on an item that's alread
 ### ✅ Legacy system messages leaking into the Chat tab (2026-08-13, tested)
 User caught this from a screenshot: old rental status messages ("✅ Request approved...", "❌ Request declined...", "💳 Payment completed...") were showing up in the plain Chat tab, mixed in with real typed messages. Root cause: 12 demo/seed messages had `transaction_id = null` — the Chat tab only excludes messages that *have* a `transaction_id`, and a prior migration (`20260510_backfill_message_transaction_id.sql`) meant to backfill exactly this had missed them (likely seeded with fabricated past `created_at` timestamps *after* that migration ran). Re-ran the same match-by-date logic (migration `20260813_backfill_message_transaction_id_v2.sql`) — all 12 matched cleanly to a real transaction, no orphans needed deleting. Current code (`insertSystemMessage`) already tags every new system message correctly, so this was pure historical cleanup, not a live bug — same root-cause class as the purchase-message leak fixed earlier this session, just on the rental side and pre-existing rather than newly introduced. **Confirmed fixed** on the old Professional Camera Kit conversation from the screenshot — Chat tab now shows only user-typed messages.
 
-## Remaining known issues (pre-existing, not touched this session)
-- `ChatRoomScreen.tsx` `confirmDispute()` and `QRDisplayScreen.tsx` `reportIssue()` still call the evidence-less 1-arg `report_issue(p_tx)` overload — a dispute raised from those two screens carries no photo/description for an admin to review. Only the QRScanScreen path collects evidence.
-- Orphaned storage object `handoff-evidence/d9d6fea4-.../dispute-1786553617536.jpg` (2.7 MB) still needs manual deletion via the Storage dashboard — Postgres can't delete storage objects directly and no service-role key is available locally.
+## ✅ All three dispute paths now collect evidence (2026-08-13)
+
+Previously only `QRScanScreen`'s return-flow dispute collected a photo + description; `ChatRoomScreen.tsx`'s `confirmDispute()` and `QRDisplayScreen.tsx`'s `reportIssue()` called the evidence-less 1-arg `report_issue(p_tx)`, so a dispute raised from either reached "under review" with nothing for an admin to look at. Fixed by making **ChatRoomScreen the one canonical dispute-reporting screen** (SAS), matching how it already owns Approve/Decline/Cancel/Pay:
+
+- `ChatRoomScreen`'s dispute modal gained a step 3 (photo + description, same UI/upload logic QRScanScreen used to have) and now always calls the 3-arg `report_issue(p_tx, p_description, p_photo_url)`.
+- `QRDisplayScreen.reportIssue()` no longer runs its own Alert+RPC — it navigates back to `ChatRoomScreen` via a new `reportIssueTransactionId` param (same pattern as the existing `declineTransactionId` for pickup-decline).
+- `QRScanScreen`'s return-flow "Report Damage Instead" button now does the same — its entire local dispute modal, state, and evidence-upload logic were removed (~115 lines), since it's no longer the only place evidence gets collected.
+- **DB migration `20260813_drop_report_issue_no_evidence_overload.sql`**: dropped the 1-arg `report_issue(uuid)` overload entirely — nothing calls it anymore, and this closes the door on the omission silently reappearing (a future call site accidentally using the wrong overload now fails to compile against nothing, i.e. can't happen).
+- **Not yet tested on a real device** — verify next: raise a dispute from all three entry points (chat's Report Issue link, QRDisplayScreen's Report button, QRScanScreen's return-flow Report Damage) and confirm each lands a `disputes` row with photo + description, not just a status flip.
+
+Orphaned storage object `handoff-evidence/d9d6fea4-.../dispute-1786553617536.jpg` (2.7 MB) still needs manual deletion via the Storage dashboard — Postgres can't delete storage objects directly and no service-role key is available locally.
 
 **None of this touched migrations before 2026-08-13** — the enum/RPC/edge-function changes are additive to the purchases flow only.
 
@@ -61,14 +69,9 @@ User caught this from a screenshot: old rental status messages ("✅ Request app
 - `report_issue(p_tx, p_description, p_photo_url)` rewritten to be **idempotent**: the index would otherwise throw a raw Postgres unique-violation at the user on the exact retry it was added to stop. A second report while a case is open now returns the existing dispute id. **Tested** by calling the RPC a second time with `request.jwt.claims` set to the reporter — it returned the existing id `6c51df41`, inserted no row, and did not overwrite the original description or photo.
 - Both changes are checked in as `supabase/migrations/20260813_disputes_one_open_case.sql`.
 
-### 🔴 Found while doing the above: two dispute paths still capture zero evidence
+### ✅ Found while doing the above, fixed later same session: two dispute paths captured zero evidence
 
-Backlog **T** was recorded as complete, but only the `QRScanScreen` path collects a photo + description. The other two call the **1-arg `report_issue(p_tx)`** overload, which flips `transactions.status` to `disputed` and **inserts no `disputes` row at all**:
-
-- `src/screens/ChatRoomScreen.tsx:560` — `confirmDispute()`
-- `src/screens/QRDisplayScreen.tsx:134` — `reportIssue()`
-
-So a dispute raised from the chat or from the QR display screen still reaches "Case Under Review" with nothing for an admin to review — exactly the problem T was meant to fix. This directly undercuts **U** (the admin console has nothing to adjudicate for those cases). Either route both through the evidence-collecting flow (SAS: there should be one canonical "report an issue" screen) or drop the 1-arg overload so the omission cannot compile.
+Backlog **T** was recorded as complete, but only the `QRScanScreen` path collected a photo + description; `ChatRoomScreen.tsx:560`'s `confirmDispute()` and `QRDisplayScreen.tsx:134`'s `reportIssue()` called the evidence-less 1-arg `report_issue(p_tx)`. **See "All three dispute paths now collect evidence" above** for the fix — all three routes now go through one canonical evidence-collecting screen.
 
 **Leftover:** the orphaned storage object `handoff-evidence/d9d6fea4-.../dispute-1786553617536.jpg` (2.7 MB) could not be removed — Postgres blocks direct `delete from storage.objects` (`storage.protect_delete()`), and no service-role key is present locally. Delete it via the Storage API or the dashboard.
 

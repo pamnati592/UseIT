@@ -1,18 +1,17 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, ScrollView, Image, Modal, TextInput, Animated,
-  KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback,
+  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, ScrollView, Image, Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
-import { ChevronLeft, Check, CircleCheck, TriangleAlert, Camera, MessageSquare, Scale, Leaf } from 'lucide-react-native';
+import { ChevronLeft, Check, CircleCheck, TriangleAlert, Camera, Leaf } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
 import { hasRatedTransaction } from '../services/ratings';
-import { uploadImage, HANDOFF_EVIDENCE_BUCKET, handoffPhotoPath, disputePhotoPath } from '../services/storage';
+import { uploadImage, HANDOFF_EVIDENCE_BUCKET, handoffPhotoPath } from '../services/storage';
 import * as Location from 'expo-location';
 import { getCurrentLocationOnce } from '../hooks/useUserLocation';
 import { metersBetween } from '../utils/format';
@@ -44,13 +43,7 @@ export default function QRScanScreen({ navigation, route }: Props) {
   const [photoAsset, setPhotoAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const photoUri = photoAsset?.uri ?? null;
   const [processing, setProcessing] = useState(false);
-  const [disputeModal, setDisputeModal] = useState<{ visible: boolean; step: 1 | 2 }>({ visible: false, step: 1 });
-  const [disputeDone, setDisputeDone] = useState(false);
-  const [disputeSubmitting, setDisputeSubmitting] = useState(false);
-  const [disputePhotoAsset, setDisputePhotoAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
-  const disputePhotoUri = disputePhotoAsset?.uri ?? null;
   const [alreadyRated, setAlreadyRated] = useState(false);
-  const [disputeText, setDisputeText] = useState('');
   const scoreAnim = useRef(new Animated.Value(0)).current;
   const handledRef = useRef(false);
 
@@ -155,36 +148,6 @@ export default function QRScanScreen({ navigation, route }: Props) {
     }, [step, phase, transactionId])
   );
 
-  async function confirmDispute() {
-    // Uploading the photo takes long enough to tap Submit twice, and on 2026-08-12 a
-    // real test produced two dispute rows 0.6s apart with two separate uploads.
-    if (disputeSubmitting) return;
-    setDisputeSubmitting(true);
-    try {
-      // The photo and description collected by this modal used to be dropped —
-      // report_issue took only the transaction id, so a case reached "under review"
-      // carrying no evidence whatsoever.
-      let photoPath: string | null = null;
-      if (disputePhotoAsset?.base64) {
-        photoPath = await uploadImage(
-          HANDOFF_EVIDENCE_BUCKET,
-          disputePhotoPath(transactionId),
-          { base64: disputePhotoAsset.base64, mimeType: disputePhotoAsset.mimeType ?? 'image/jpeg' },
-        );
-      }
-      const { error } = await supabase.rpc('report_issue', {
-        p_tx: transactionId,
-        p_description: disputeText.trim() || null,
-        p_photo_url: photoPath,
-      });
-      if (error) throw error;
-      setDisputeDone(true);
-    } catch (e: any) {
-      Alert.alert('Error', e.message ?? 'Could not submit dispute.');
-    } finally {
-      setDisputeSubmitting(false);
-    }
-  }
 
   async function onScanned(result: BarcodeScanningResult) {
     if (handledRef.current || processing) return;
@@ -272,9 +235,17 @@ export default function QRScanScreen({ navigation, route }: Props) {
                 <Text style={styles.primaryBtnText}>Confirm & Document Condition</Text>
               </TouchableOpacity>
               {phase === 'return' ? (
+                /* ChatRoomScreen owns dispute evidence collection (photo + description) —
+                   this screen must not duplicate it (SAS). Route back there instead. */
                 <TouchableOpacity
                   style={styles.reportDamageBtn}
-                  onPress={() => setDisputeModal({ visible: true, step: 1 })}
+                  onPress={() => navigation.navigate('ChatRoom', {
+                    conversationId,
+                    itemTitle,
+                    otherUserName: otherName ?? 'them',
+                    initialTab: 'deal',
+                    reportIssueTransactionId: transactionId,
+                  })}
                 >
                   <TriangleAlert size={15} color={colors.danger} />
                   <Text style={styles.reportDamageText}>Report Damage Instead</Text>
@@ -444,122 +415,6 @@ export default function QRScanScreen({ navigation, route }: Props) {
         </View>
       )}
 
-      {/* ── Dispute Modal ── */}
-      <Modal
-        visible={disputeModal.visible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setDisputeModal(prev => ({ ...prev, visible: false }))}
-      >
-        {/* Step 2 of this modal has a multiline description field. Without keyboard
-            handling the sheet sits under the keyboard with no way to dismiss it —
-            Return inserts a newline, and Android has no Done key. */}
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-          <KeyboardAvoidingView
-            style={styles.modalOverlay}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          >
-            <View style={styles.modalSheet}>
-            {disputeDone ? (
-              <>
-                <View style={styles.modalHandle} />
-                <View style={[styles.modalIconCircle, { backgroundColor: 'rgba(244,67,54,0.1)', alignSelf: 'center' }]}>
-                  <Scale size={24} color={colors.danger} />
-                </View>
-                <Text style={styles.modalTitle}>Case Under Review</Text>
-                <Text style={styles.modalBody}>
-                  Photos & description sent for AI review and expert evaluation. Funds are held in escrow until resolved.
-                </Text>
-                <TouchableOpacity style={styles.modalPrimaryBtn} onPress={() => { setDisputeModal({ visible: false, step: 1 }); navigation.goBack(); }}>
-                  <Text style={styles.modalPrimaryBtnText}>Done</Text>
-                </TouchableOpacity>
-              </>
-            ) : disputeModal.step === 1 ? (
-              <>
-                <View style={styles.modalHandle} />
-                <View style={[styles.modalIconCircle, { backgroundColor: colors.warningBg, alignSelf: 'center' }]}>
-                  <MessageSquare size={24} color={colors.warning} />
-                </View>
-                <Text style={styles.modalTitle}>Report Damage</Text>
-                <Text style={styles.modalBody}>
-                  We recommend resolving this community-wise first. Reach out directly — most issues are resolved quickly through a simple conversation.
-                </Text>
-                <TouchableOpacity style={styles.modalPrimaryBtn} onPress={() => { setDisputeModal(prev => ({ ...prev, visible: false })); navigation.goBack(); }}>
-                  <MessageSquare size={16} color={colors.btnText} />
-                  <Text style={styles.modalPrimaryBtnText}>Message them directly</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.modalSecondaryBtn} onPress={() => setDisputeModal(prev => ({ ...prev, step: 2 }))}>
-                  <Text style={styles.modalSecondaryBtnText}>Escalate to UseIT →</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.modalCancelLink} onPress={() => setDisputeModal(prev => ({ ...prev, visible: false }))}>
-                  <Text style={styles.modalCancelLinkText}>Cancel</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <View style={styles.modalHandle} />
-                <View style={[styles.modalIconCircle, { backgroundColor: colors.dangerBg, alignSelf: 'center' }]}>
-                  <Scale size={24} color={colors.danger} />
-                </View>
-                <Text style={styles.modalTitle}>Document the Damage</Text>
-                <Text style={styles.modalBody}>Upload a photo and describe what's wrong.</Text>
-
-                {/* Damage photo */}
-                {disputePhotoUri ? (
-                  <Image
-                    source={{ uri: disputePhotoUri }}
-                    style={styles.disputePreview}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <TouchableOpacity
-                    style={styles.disputeCameraTile}
-                    onPress={async () => {
-                      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-                      if (status !== 'granted') return;
-                      const r = await ImagePicker.launchCameraAsync({ quality: 0.75, base64: true });
-                      if (!r.canceled && r.assets[0]) setDisputePhotoAsset(r.assets[0]);
-                    }}
-                  >
-                    <Camera size={32} color={colors.textMuted} strokeWidth={1.5} />
-                    <Text style={styles.cameraTileText}>Photograph the damage</Text>
-                  </TouchableOpacity>
-                )}
-
-                {/* Damage description */}
-                <TextInput
-                  style={[styles.disputeInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
-                  placeholder="Describe the damage…"
-                  placeholderTextColor={colors.textMuted}
-                  value={disputeText}
-                  onChangeText={setDisputeText}
-                  multiline
-                  numberOfLines={3}
-                />
-
-                <TouchableOpacity
-                  style={[styles.modalPrimaryBtn, { backgroundColor: colors.danger, opacity: (!disputePhotoUri || !disputeText.trim() || disputeSubmitting) ? 0.45 : 1 }]}
-                  onPress={confirmDispute}
-                  disabled={!disputePhotoUri || !disputeText.trim() || disputeSubmitting}
-                >
-                  {disputeSubmitting ? (
-                    <ActivityIndicator color={colors.white} />
-                  ) : (
-                    <>
-                      <Scale size={16} color={colors.white} />
-                      <Text style={[styles.modalPrimaryBtnText, { color: colors.white }]}>Submit Dispute</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.modalSecondaryBtn} onPress={() => setDisputeModal(prev => ({ ...prev, step: 1 }))}>
-                  <Text style={styles.modalSecondaryBtnText}>← Go back</Text>
-                </TouchableOpacity>
-              </>
-            )}
-            </View>
-          </KeyboardAvoidingView>
-        </TouchableWithoutFeedback>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -687,39 +542,4 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     gap: 6, paddingVertical: 14, marginTop: 4,
   },
   reportDamageText: { color: colors.danger, fontSize: 14, fontWeight: '600' },
-
-  // Dispute photo & description
-  disputePreview: { width: '100%', height: 160, borderRadius: 12 },
-  disputeCameraTile: {
-    height: 120, borderRadius: 12,
-    backgroundColor: colors.card, borderWidth: 1.5, borderColor: colors.border,
-    borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', gap: 8,
-  },
-  disputeInput: {
-    borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
-    fontSize: 14, minHeight: 72, textAlignVertical: 'top',
-  },
-
-  // Dispute modal
-  modalOverlay: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' },
-  modalSheet: {
-    backgroundColor: colors.card,
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    paddingHorizontal: 20, paddingBottom: 40, paddingTop: 12, gap: 14,
-  },
-  modalHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, marginBottom: 6 },
-  modalIconCircle: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
-  modalTitle: { fontSize: 20, fontWeight: '700', color: colors.text, textAlign: 'center' },
-  modalBody: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', lineHeight: 20 },
-  arbitrationBox: { backgroundColor: colors.dangerBg, borderRadius: 12, borderLeftWidth: 3, borderLeftColor: colors.danger, padding: 14 },
-  arbitrationText: { fontSize: 13, color: colors.text, lineHeight: 20, fontStyle: 'italic' },
-  modalPrimaryBtn: {
-    height: 52, backgroundColor: colors.btn, borderRadius: 14,
-    flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center',
-  },
-  modalPrimaryBtnText: { color: colors.btnText, fontSize: 15, fontWeight: '700' },
-  modalSecondaryBtn: { alignItems: 'center', paddingVertical: 8 },
-  modalSecondaryBtnText: { color: colors.primary, fontSize: 14, fontWeight: '600' },
-  modalCancelLink: { alignItems: 'center', paddingVertical: 4 },
-  modalCancelLinkText: { color: colors.textFaint, fontSize: 14 },
 });

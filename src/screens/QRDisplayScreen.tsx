@@ -31,7 +31,7 @@ const CO2_SAVED    = '3.5';
 export default function QRDisplayScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { transactionId, phase, itemTitle, otherName } = route.params;
+  const { transactionId, phase, itemTitle, otherName, conversationId } = route.params;
 
   const [step,    setStep]    = useState<Step>('loading');
   const [payload, setPayload] = useState<QrPayload | null>(null);
@@ -123,21 +123,17 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
     }).start();
   }, [step, phase]);
 
-  async function reportIssue() {
-    Alert.alert(
-      'Report an issue?',
-      'This puts the rental into dispute and holds the payment until an admin reviews it.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Report', style: 'destructive', onPress: async () => {
-            const { error } = await supabase.rpc('report_issue', { p_tx: transactionId });
-            if (error) { Alert.alert('Error', error.message); return; }
-            navigation.goBack();
-          },
-        },
-      ],
-    );
+  // ChatRoomScreen owns dispute evidence collection (photo + description) — this
+  // screen must not duplicate it (SAS). Route back there instead, same pattern as
+  // the pickup decline in QRScanScreen.
+  function reportIssue() {
+    navigation.navigate('ChatRoom', {
+      conversationId,
+      itemTitle,
+      otherUserName: otherName ?? 'them',
+      initialTab: 'deal',
+      reportIssueTransactionId: transactionId,
+    });
   }
 
   const title = phase === 'pickup' ? 'Pickup' : 'Return';
