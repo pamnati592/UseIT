@@ -4,18 +4,40 @@
 
 **Context:** DB access is via the Supabase MCP. The access token was rotated on **2026-08-13** and now lives in the `env` block (`SUPABASE_ACCESS_TOKEN`) of the `supabase` entry in `~/.claude.json`, not as a `--access-token` flag. If MCP calls return `Unauthorized`, the token has expired again — regenerate at https://supabase.com/dashboard/account/tokens and re-add with `claude mcp add supabase -s user -e SUPABASE_ACCESS_TOKEN=... -- npx -y @supabase/mcp-server-supabase@latest`, then **restart Claude Code** (MCP servers only read config at startup).
 
-## 🔴 UNFINISHED — do this first (2026-08-13)
+## 🟡 ONE STEP LEFT — needs a real device (2026-08-13)
 
-**An edge-function change is written but NOT DEPLOYED, and it is uncommitted.**
+`create-payment-intent` **is now deployed** (version 7, deployed 2026-08-13 via MCP; version 6 was the stale copy without the persistence block). The deployed source was re-fetched and diffed against disk — they match.
 
-`supabase/functions/create-payment-intent/index.ts` was modified to persist `stripe_payment_intent_id` onto the transaction/purchase after creating the Stripe PaymentIntent. **The file on disk is not what runs** — Supabase runs the deployed copy. Until it is deployed, every payment still loses its Stripe id and becomes unrefundable (backlog **Z**).
+**What is still unproven:** no payment has been made since the deploy, so the write itself has never executed. Do this on the next two-device run:
 
-Steps to finish:
-1. Deploy it — `deploy_edge_function` via MCP (needs the token above), or `supabase functions deploy create-payment-intent` if the CLI gets installed (`brew install supabase/tap/supabase`; it is **not** installed as of 2026-08-13).
-2. Make one test payment, then confirm `transactions.stripe_payment_intent_id` is actually populated. Do not trust the UI — verify in the table.
-3. Commit. Uncommitted at `237d7f0`: `NEXT_STEP.md`, `src/screens/QRScanScreen.tsx` (dispute double-submit guard), `supabase/functions/create-payment-intent/index.ts`.
+1. Make one test payment (rental **and** purchase — they take different code paths, `transactions` vs `purchases`).
+2. Verify in the table, not the UI:
+   ```sql
+   select id, status, stripe_payment_intent_id from transactions where stripe_payment_intent_id is not null;
+   select id, status, stripe_payment_intent_id from purchases    where stripe_payment_intent_id is not null;
+   ```
+   Both columns exist and are `text`; both were confirmed 0-populated before this deploy.
+3. If the write fails, the function now **cancels the intent and returns a 500** rather than taking money it could never refund — so the symptom will be a failed payment, not a silent loss. Check the edge-function logs.
 
-Also still pending, needs migrations (was blocked on the dead token): the partial unique index on `disputes` from **X**, and cleanup of the 2 duplicate dispute rows on transaction `d9d6fea4`.
+Only then is backlog **Z** step 1 genuinely closed, and step 2 (`refund-payment` edge function) can start.
+
+### ✅ Backlog X duplicate-dispute guard is done and verified (2026-08-13)
+
+- Duplicate row `0a761f3d` deleted (the later of the two on `d9d6fea4`; both photos were byte-identical at 2,716,537 bytes). One row remains, original evidence intact.
+- Partial unique index `disputes_one_open_per_transaction on disputes (transaction_id) where status = 'open'` applied. Partial deliberately — a *new* dispute after an earlier one is resolved is legitimate and must stay possible.
+- `report_issue(p_tx, p_description, p_photo_url)` rewritten to be **idempotent**: the index would otherwise throw a raw Postgres unique-violation at the user on the exact retry it was added to stop. A second report while a case is open now returns the existing dispute id. **Tested** by calling the RPC a second time with `request.jwt.claims` set to the reporter — it returned the existing id `6c51df41`, inserted no row, and did not overwrite the original description or photo.
+- Both changes are checked in as `supabase/migrations/20260813_disputes_one_open_case.sql`.
+
+### 🔴 Found while doing the above: two dispute paths still capture zero evidence
+
+Backlog **T** was recorded as complete, but only the `QRScanScreen` path collects a photo + description. The other two call the **1-arg `report_issue(p_tx)`** overload, which flips `transactions.status` to `disputed` and **inserts no `disputes` row at all**:
+
+- `src/screens/ChatRoomScreen.tsx:560` — `confirmDispute()`
+- `src/screens/QRDisplayScreen.tsx:134` — `reportIssue()`
+
+So a dispute raised from the chat or from the QR display screen still reaches "Case Under Review" with nothing for an admin to review — exactly the problem T was meant to fix. This directly undercuts **U** (the admin console has nothing to adjudicate for those cases). Either route both through the evidence-collecting flow (SAS: there should be one canonical "report an issue" screen) or drop the 1-arg overload so the omission cannot compile.
+
+**Leftover:** the orphaned storage object `handoff-evidence/d9d6fea4-.../dispute-1786553617536.jpg` (2.7 MB) could not be removed — Postgres blocks direct `delete from storage.objects` (`storage.protect_delete()`), and no service-role key is present locally. Delete it via the Storage API or the dashboard.
 
 ### ✅ Backlog T is complete and verified end-to-end (2026-08-12)
 
@@ -189,7 +211,7 @@ When you build the QR flow, wire any status change (item handed over, item retur
 - **11 stale June transactions** — duplicate `Canon EOS R5` requests from 2026-06-11, all left `approved`, all Ori→Nati. They clutter the Deal Board and make real test transactions hard to find. Cancel the pre-August ones.
 - **QR handoff writes no system message** — `QRScanScreen` never calls `insertSystemMessage`, so pickup and return produce **no Badge Jump** and leave the chat-list preview stuck on the previous status. `NEXT_STEP.md` already called for this ("wire any status change (item handed over, item returned) through `insertSystemMessage()`"); it was never implemented. Suggested previews: `📦 Item handed over · Rental active`, `✅ Item returned · Rental complete`.
 - **`submit_item_review` may allow duplicates** — `submit_rating` was hardened on 2026-08-09 to reject a second rating, but `submit_item_review` was not inspected. Check whether it upserts the same way and needs the same guard.
-- **Duplicate disputes need a DB-level guard** — a real test on 2026-08-12 produced **two** dispute rows 0.6s apart for transaction `d9d6fea4`, each with its own uploaded photo, because the Submit button had no in-flight guard while the photo uploaded. The client guard is fixed, but a client guard is not a constraint: add a partial unique index (e.g. `unique (transaction_id) where status = 'open'`) so a retry or a second device cannot open two live cases on one rental. The two duplicate rows are still in the table and should be cleaned up — note `disputes` currently has only a SELECT policy, so deletion needs the service role or a new policy.
+- ~~**Duplicate disputes need a DB-level guard**~~ — ✅ **Done 2026-08-13.** Partial unique index applied, duplicate row deleted, and `report_issue` made idempotent so the constraint doesn't surface a raw Postgres error. See the verified section at the top. (For the record: `disputes` has only a SELECT policy, so the deletion had to go through the service role — via MCP, which runs as `postgres`.)
 
 ### Y. Proximity check — GPS accuracy (root cause found & fixed 2026-08-11)
 - **Root cause:** `getCurrentLocationOnce` requested `Location.Accuracy.Balanced`, which expo-location documents as *"accurate to within one hundred meters"* — Wi-Fi/network derived, not a real GPS fix. The proximity threshold is **50m**, so the error budget was **double the limit being enforced**. Two phones touching each other could read anywhere from 0m to 150m apart. The ~19m measured on 2026-08-09 was luck, and on 2026-08-11 the same two phones side by side failed the check outright.
