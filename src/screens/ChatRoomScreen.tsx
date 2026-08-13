@@ -395,20 +395,27 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     return Math.round((b.getTime() - a.getTime()) / 86_400_000) + 1;
   }
 
-  // Cancellation is always allowed pre-pickup (approved/paid) — the 24h/4h
-  // spec 4.8 tiers control the refund amount, not whether cancel is offered.
-  // end_date guards against a stale row whose window has already passed.
+  // Rental dates are stored as midnight-of-day, representing a whole calendar
+  // day rather than an instant — so comparisons must be day-granularity, not
+  // millisecond. Cancellation is always allowed pre-pickup (approved/paid)
+  // through the rental's last day; the day-based refund tier below controls
+  // the amount, not whether cancel is offered.
+  function dayKey(iso: string): string {
+    return new Date(iso).toISOString().slice(0, 10);
+  }
+
   function canCancelTx(tx: Transaction): boolean {
-    return new Date(tx.end_date).getTime() > Date.now();
+    return dayKey(new Date().toISOString()) <= dayKey(tx.end_date);
   }
 
   // Mirrors refund-payment's server-side tier so the confirmation dialog shows
   // the real number before the user commits — the server remains authoritative.
+  // Rentals run by the day, not the hour: cancel before the start day for a
+  // full refund; cancelling on (or after) the start day charges 75%.
   function refundTierLabel(startDate: string): string {
-    const hoursUntilStart = (new Date(startDate).getTime() - Date.now()) / 3_600_000;
-    if (hoursUntilStart >= 24) return 'a full refund';
-    if (hoursUntilStart >= 4) return 'a 75% refund';
-    return 'no refund — this is within 4 hours of the rental start';
+    return dayKey(startDate) <= dayKey(new Date().toISOString())
+      ? 'a 25% refund (cancelling on the rental start day)'
+      : 'a full refund';
   }
 
   // Update conversation timestamp BEFORE inserting the message so that when the

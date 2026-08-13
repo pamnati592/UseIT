@@ -12,12 +12,15 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Spec 4.8/4.10 cancellation policy, keyed off time remaining until start_date.
+// Rentals run by the day, not the hour — start_date/end_date are stored as
+// midnight-of-day. Cancel before the start day: full refund. Cancel on (or
+// after) the start day: 25% refund (75% charged).
+function dayKey(iso: string): string {
+  return new Date(iso).toISOString().slice(0, 10);
+}
+
 function refundPercentage(startDate: string): number {
-  const hoursUntilStart = (new Date(startDate).getTime() - Date.now()) / 3_600_000;
-  if (hoursUntilStart >= 24) return 100;
-  if (hoursUntilStart >= 4) return 75;
-  return 0;
+  return dayKey(startDate) <= dayKey(new Date().toISOString()) ? 25 : 100;
 }
 
 serve(async (req) => {
