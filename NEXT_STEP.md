@@ -1,5 +1,10 @@
 # Next Suggested Step — For Nati 👋
 
+## ✅ Dispute photo made optional (2026-08-13)
+User feedback: the dispute Submit button required both a photo *and* a description before it would enable. Not every dispute is about a damaged item (no-show, wrong item, payment issue, etc.), so requiring a photo for all of them was wrong. Now only the description is required to submit — the photo picker stays, with copy nudging the user to add one specifically when something is damaged, but it no longer blocks submission. `confirmDispute()` already handled a null photo gracefully (uploads only `if (disputePhotoAsset?.base64)`), so this was a UI-gating-only change.
+
+**Reminder:** the iPhone build will expire again ~7 days after the last `npx expo run:ios --device` (free Apple personal team signing limit) — "X Is No Longer Available" on the home screen means it's time to re-run that command with the phone on USB.
+
 ## ✅ Self-unread-badge bug fixed (2026-08-13)
 
 User report: approving a rental lit up their *own* unread badge as if a new message had arrived, and briefly showed a phantom "waiting" indicator in Chat after leaving Deal Board. Root cause: `send()` (typed chat messages) always re-marks the sender's own `*_last_read_at` after bumping `conversations.last_message_at` — but `insertSystemMessage()` (used by every status-change action: approve/reject/pay/cancel/decline/dispute) never did, so the actor's own last-read timestamp fell behind their own action's timestamp. Same gap existed in `handleApprovePurchase`/`handleRejectPurchase`, whose RPCs bump the conversation preview server-side. Fixed by calling `markAsRead(currentUserId)` + `chatBus.notify()` in all three places, mirroring `send()`. **Not yet tested on a real device** — verify next: approve/pay/cancel a rental and confirm no self-badge appears, then check the Chats list right after leaving Deal Board.

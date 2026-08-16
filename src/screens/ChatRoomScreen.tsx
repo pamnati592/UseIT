@@ -1371,7 +1371,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                   </View>
                 </View>
                 <Text style={styles.modalTitle}>Document the Issue</Text>
-                <Text style={styles.modalBody}>Upload a photo and describe what's wrong — this is what the UseIT mediator will review.</Text>
+                <Text style={styles.modalBody}>Describe what's wrong — this is what the UseIT mediator will review. If something is damaged, a photo makes the case much stronger, but it isn't required for every kind of issue.</Text>
 
                 {disputePhotoUri ? (
                   <Image source={{ uri: disputePhotoUri }} style={styles.disputePreview} resizeMode="cover" />
@@ -1386,7 +1386,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                     }}
                   >
                     <Camera size={32} color={colors.textMuted} strokeWidth={1.5} />
-                    <Text style={styles.cameraTileText}>Photograph the issue</Text>
+                    <Text style={styles.cameraTileText}>Add a photo (optional) — recommended if something's damaged</Text>
                   </TouchableOpacity>
                 )}
 
@@ -1401,9 +1401,9 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                 />
 
                 <TouchableOpacity
-                  style={[styles.modalPrimaryBtn, { backgroundColor: colors.danger, opacity: (!disputePhotoUri || !disputeText.trim() || disputeSubmitting) ? 0.45 : 1 }]}
+                  style={[styles.modalPrimaryBtn, { backgroundColor: colors.danger, opacity: (!disputeText.trim() || disputeSubmitting) ? 0.45 : 1 }]}
                   onPress={confirmDispute}
-                  disabled={!disputePhotoUri || !disputeText.trim() || disputeSubmitting}
+                  disabled={!disputeText.trim() || disputeSubmitting}
                 >
                   {disputeSubmitting ? (
                     <ActivityIndicator color={colors.white} />
