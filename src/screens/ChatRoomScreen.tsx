@@ -111,6 +111,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   const [itemCategory, setItemCategory] = useState<string>('other');
   const [pickupLocation, setPickupLocation] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<Record<string, Transaction>>({});
+  const [disputeResolutions, setDisputeResolutions] = useState<Record<string, string>>({});
   const [purchases, setPurchases] = useState<Record<string, Purchase>>({});
   const [actionLoading, setActionLoading] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
@@ -142,7 +143,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
         if (data?.full_name && mounted) setCurrentUserName(data.full_name);
       });
 
-      const [messagesRes, convRes, txRes, purchasesRes] = await Promise.all([
+      const [messagesRes, convRes, txRes, purchasesRes, disputesRes] = await Promise.all([
         supabase
           .from('messages')
           .select('id, sender_id, content, created_at, transaction_id')
@@ -161,6 +162,13 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
           .from('purchases')
           .select('id, item_id, buyer_id, seller_id, price, status, created_at')
           .eq('conversation_id', conversationId),
+        // Resolved disputes carry the "why" behind a cancelled/completed status
+        // once an admin has ruled — surfaced on the request card instead of the
+        // generic cancelled/completed text.
+        supabase
+          .from('disputes')
+          .select('transaction_id, status, resolution, transactions!inner(conversation_id)')
+          .eq('transactions.conversation_id', conversationId),
       ]);
 
       if (!mounted) return;
@@ -194,6 +202,12 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       }
 
       setTransactions(map);
+
+      const disputeMap: Record<string, string> = {};
+      (disputesRes.data as any[] ?? []).forEach(d => {
+        if (d.status === 'resolved' && d.resolution) disputeMap[d.transaction_id] = d.resolution;
+      });
+      setDisputeResolutions(disputeMap);
 
       const purchaseMap: Record<string, Purchase> = {};
       (purchasesRes.data as Purchase[] ?? []).forEach(p => { purchaseMap[p.id] = p; });
@@ -288,7 +302,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     useCallback(() => {
       let active = true;
       (async () => {
-        const [txRes, purchasesRes] = await Promise.all([
+        const [txRes, purchasesRes, disputesRes] = await Promise.all([
           supabase
             .from('transactions')
             .select('id, status, start_date, end_date, total_price, approved_at')
@@ -297,6 +311,10 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
             .from('purchases')
             .select('id, item_id, buyer_id, seller_id, price, status, created_at')
             .eq('conversation_id', conversationId),
+          supabase
+            .from('disputes')
+            .select('transaction_id, status, resolution, transactions!inner(conversation_id)')
+            .eq('transactions.conversation_id', conversationId),
         ]);
         if (!active) return;
         if (txRes.data) {
@@ -312,6 +330,13 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
             (purchasesRes.data as Purchase[]).forEach((p) => { next[p.id] = p; });
             return next;
           });
+        }
+        if (disputesRes.data) {
+          const disputeMap: Record<string, string> = {};
+          (disputesRes.data as any[]).forEach(d => {
+            if (d.status === 'resolved' && d.resolution) disputeMap[d.transaction_id] = d.resolution;
+          });
+          setDisputeResolutions((prev) => ({ ...prev, ...disputeMap }));
         }
 
         // Read status deserves the same safety net: the one-time mount effect's
@@ -415,6 +440,17 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       chatBus.notify();
     }
     setSending(false);
+  }
+
+  // disputes.resolution is stored as 'favor_renter'/'favor_lender', optionally
+  // followed by ": {admin note}" — see admin_resolve_dispute. Parsed here
+  // rather than duplicating the phrasing in two places (SQL for the chat
+  // message, TS for the card).
+  function formatDisputeResolution(raw: string): string {
+    const isRenter = raw.startsWith('favor_renter');
+    const noteIdx = raw.indexOf(': ');
+    const note = noteIdx >= 0 ? raw.slice(noteIdx + 2) : null;
+    return `⚖️ UseIT ruled in favor of the ${isRenter ? 'renter' : 'lender'}.${note ? ' ' + note : ''}`;
   }
 
   function formatDateRange(tx: Transaction): string {
@@ -1164,7 +1200,9 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                 </View>
               )}
               {tx.status === 'completed' && (
-                <Text style={styles.helperText}>✅ This rental has been completed.</Text>
+                disputeResolutions[tx.id]
+                  ? <Text style={styles.helperText}>{formatDisputeResolution(disputeResolutions[tx.id])}</Text>
+                  : <Text style={styles.helperText}>✅ This rental has been completed.</Text>
               )}
               {tx.status === 'rejected' && (
                 <Text style={styles.helperText}>❌ This request was declined.</Text>
@@ -1173,7 +1211,9 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                 <Text style={styles.helperText}>⚠️ This rental is under review by UseIT support.</Text>
               )}
               {tx.status === 'cancelled' && (
-                <Text style={styles.helperText}>⚠️ This rental was cancelled — refund processed per policy.</Text>
+                disputeResolutions[tx.id]
+                  ? <Text style={styles.helperText}>{formatDisputeResolution(disputeResolutions[tx.id])}</Text>
+                  : <Text style={styles.helperText}>⚠️ This rental was cancelled — refund processed per policy.</Text>
               )}
             </View>
           )}

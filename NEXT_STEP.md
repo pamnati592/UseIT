@@ -1,5 +1,16 @@
 # Next Suggested Step — For Nati 👋
 
+## ✅ Dispute resolution now actually notifies both parties (2026-08-16)
+Found while testing U with injected data: `admin_resolve_dispute` updated the DB but told nobody — no message, no Badge Jump, and the Deal Board card would've just shown the same generic "cancelled"/"completed" text as any other rental, no mention a dispute was ever involved.
+
+Fixed: `admin_resolve_dispute` now inserts a system message into the conversation explaining the ruling (and the note, if the admin left one), and bumps `conversations.last_message_at`/`last_message` for the Chats-list preview. **Deliberately does not mark either party's `last_read_at`** — unlike every other system message in this app (always inserted by one of the two participants, marking their own read status), here neither party acted; the admin isn't a conversation participant with a read field at all. Leaving both untouched means Badge Jump genuinely fires for both sides, not just whoever opens the chat next.
+
+`ChatRoomScreen` now also fetches resolved disputes for its transactions and shows the real ruling text on the request card (`⚖️ UseIT ruled in favor of the {renter/lender}. {note}`) instead of the generic cancelled/completed text, once one exists.
+
+**Test data currently live** (injected for testing, see below): the Nintendo Switch OLED rental (Nati renting from Ori) is `disputed` with a real complaint and a real photo attached, tied to a genuine unrefunded Stripe test-mode payment — resolving "Favor Renter" on it will issue a real (test-mode) refund. "Electric Guitar + Amp Combo" (Nati's item) is sitting `pending` for item-moderation testing.
+
+**Not yet tested on a real device.**
+
 ## ✅ Backlog U — admin console shipped (2026-08-16)
 The last item on the pre-agreed list. Spec section 2 defines an Admin user type and 5.2 requires RBAC — nothing existed before this.
 
