@@ -1,5 +1,20 @@
 # Next Suggested Step — For Nati 👋
 
+## ✅ UseIT support chat — per-rental 1:1 threads with admin (2026-08-16)
+User's own correction on the shape: **not** a 3-way room (renter+lender+admin) — two separate 1:1 threads per transaction, renter↔admin and lender↔admin, each party only ever sees their own conversation, scoped to that one rental.
+
+- New tables `support_threads` (unique on `transaction_id, user_id`) and `support_messages`, RLS: readable/writable by the thread's own `user_id` or an admin (`is_admin()`). Migration: `20260816_support_threads.sql`.
+- `ensure_support_thread(p_transaction_id)` — self-service get-or-create, callable only by the renter or lender on that transaction. `admin_ensure_support_thread(p_transaction_id, p_user_id)` — admin variant, validates the target user is actually a party before creating their thread.
+- New `SupportThreadScreen.tsx` — one reusable chat UI (realtime `INSERT` subscription, inverted list, send-on-enter) mounted from both `ChatsStackNavigator` and `ProfileStackNavigator` per SAS, since it's opened from both a user's own rental card and the admin dispute console.
+- **Entry point, user side:** `ChatRoomScreen` — a "Message UseIT About This" button now shows on any request card that's `disputed`, or `cancelled`/`completed` with a resolved-dispute ruling attached. Calls `ensure_support_thread` then navigates to `SupportThread`.
+- **Entry point, admin side:** `AdminDisputesScreen` — "Message Renter" / "Message Lender" buttons on every dispute card, calling `admin_ensure_support_thread` with the respective party's id.
+- Typecheck clean. **Not yet tested on a real device** — next session should open a dispute on both the iPhone and Galaxy, message support from each side, and confirm the admin sees both threads separately (not merged) from `AdminDisputesScreen`.
+
+### Still open from the same conversation — Q1 and Q2, genuinely blocked on user input
+Discussed alongside the support-chat request but not yet built:
+- **Q1 — automatic damage charge, even if the user never saved a card.** Answered technically (Stripe cannot charge a card that was never authorized off-session — no way around that, regulatory + Stripe API constraint, not a config gap). Proposed fix: make `setup_future_usage: 'off_session'` **mandatory** on every rental PaymentIntent (not opt-in via the card-saving checkbox), with a disclosure line on the payment screen so this is never a surprise. **Needs an explicit yes before building** — it changes what every renter implicitly agrees to at checkout.
+- **Q2 — late-return penalty.** Confirmed: it's the **renter** who gets fined after 2 weeks unreturned (user caught their own lender/renter slip and corrected it), amount decided by admin (can consult the lender), surfaced in a new "Overdue Rentals" admin panel. **Still unanswered:** is there a smaller per-day fee building up before the 2-week mark, or purely a cliff at exactly 2 weeks with nothing before it? Don't start this migration until that's answered — it changes the schema (a running per-day charge needs different bookkeeping than a single cliff event).
+
 ## ✅ Dispute resolution now actually notifies both parties (2026-08-16)
 Found while testing U with injected data: `admin_resolve_dispute` updated the DB but told nobody — no message, no Badge Jump, and the Deal Board card would've just shown the same generic "cancelled"/"completed" text as any other rental, no mention a dispute was ever involved.
 

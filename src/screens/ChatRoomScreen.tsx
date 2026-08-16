@@ -20,6 +20,7 @@ import { CategoryIcon } from '../components/CategoryIcon';
 import {
   Check, X, CreditCard, Clock, ChevronLeft, Package, Calendar, MessageCircle, ClipboardList, ArrowUp,
   ScanLine, QrCode, CircleCheck, TriangleAlert, MapPin, MessageSquare, Scale, UserRound, ShoppingCart, Camera,
+  ShieldCheck,
 } from 'lucide-react-native';
 
 // Status label/color shown on the rental-request card's status pill — the card
@@ -709,6 +710,16 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     }
   }
 
+  async function handleMessageSupport(transactionId: string) {
+    try {
+      const { data: threadId, error } = await supabase.rpc('ensure_support_thread', { p_transaction_id: transactionId });
+      if (error) throw error;
+      navigation.navigate('SupportThread', { threadId: threadId as string, title: `UseIT · ${itemTitle}` });
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Could not open support chat.');
+    }
+  }
+
   async function handlePay(transactionId: string) {
     setPayLoading(true);
     try {
@@ -1215,6 +1226,12 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                   ? <Text style={styles.helperText}>{formatDisputeResolution(disputeResolutions[tx.id])}</Text>
                   : <Text style={styles.helperText}>⚠️ This rental was cancelled — refund processed per policy.</Text>
               )}
+              {(tx.status === 'disputed' || disputeResolutions[tx.id]) && (
+                <TouchableOpacity style={styles.messageSupportBtn} onPress={() => handleMessageSupport(tx.id)}>
+                  <ShieldCheck size={14} color={colors.primary} />
+                  <Text style={styles.messageSupportBtnText}>Message UseIT About This</Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
 
@@ -1645,6 +1662,12 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   // and what (if anything) needs to happen next, role-aware.
   helperText: { fontSize: 13.5, color: colors.textSecondary, lineHeight: 19 },
   helperTextFlex: { flex: 1 },
+  messageSupportBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
+    marginTop: 8, paddingVertical: 6, paddingHorizontal: 10,
+    borderRadius: 8, borderWidth: 1, borderColor: colors.primary,
+  },
+  messageSupportBtnText: { color: colors.primary, fontSize: 13, fontWeight: '600' },
   payBtn: {
     height: 44, backgroundColor: colors.btn, borderRadius: 10,
     flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center',

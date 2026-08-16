@@ -8,7 +8,7 @@ import { supabase } from '../services/supabase';
 import { signedUrlFor, HANDOFF_EVIDENCE_BUCKET } from '../services/storage';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
-import { ChevronLeft, Scale, Package } from 'lucide-react-native';
+import { ChevronLeft, Scale, Package, ShieldCheck } from 'lucide-react-native';
 
 type Props = NativeStackScreenProps<ProfileStackParamList, 'AdminDisputes'>;
 
@@ -100,6 +100,19 @@ export default function AdminDisputesScreen({ navigation }: Props) {
     );
   }
 
+  async function messageParty(transactionId: string, userId: string, label: string) {
+    try {
+      const { data: threadId, error } = await supabase.rpc('admin_ensure_support_thread', {
+        p_transaction_id: transactionId,
+        p_user_id: userId,
+      });
+      if (error) throw error;
+      navigation.navigate('SupportThread', { threadId: threadId as string, title: `${label} · Dispute Support` });
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Could not open support chat.');
+    }
+  }
+
   function renderItem({ item: d }: { item: DisputeRow }) {
     const resolving = resolvingId === d.transaction_id;
     return (
@@ -139,6 +152,23 @@ export default function AdminDisputesScreen({ navigation }: Props) {
           onChangeText={(t) => setNotes(prev => ({ ...prev, [d.transaction_id]: t }))}
           multiline
         />
+
+        <View style={styles.messageRow}>
+          <TouchableOpacity
+            style={styles.messageBtn}
+            onPress={() => messageParty(d.transaction_id, d.renter_id, d.renter_name)}
+          >
+            <ShieldCheck size={13} color={colors.primary} />
+            <Text style={styles.messageBtnText}>Message Renter</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.messageBtn}
+            onPress={() => messageParty(d.transaction_id, d.lender_id, d.lender_name)}
+          >
+            <ShieldCheck size={13} color={colors.primary} />
+            <Text style={styles.messageBtnText}>Message Lender</Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.actionsRow}>
           <TouchableOpacity
@@ -225,6 +255,12 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
     fontSize: 13, minHeight: 44, textAlignVertical: 'top',
   },
+  messageRow: { flexDirection: 'row', gap: 10 },
+  messageBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    height: 36, borderRadius: 8, borderWidth: 1, borderColor: colors.primary,
+  },
+  messageBtnText: { color: colors.primary, fontSize: 12.5, fontWeight: '600' },
   actionsRow: { flexDirection: 'row', gap: 10 },
   actionBtn: {
     flex: 1, height: 42, borderRadius: 10,
