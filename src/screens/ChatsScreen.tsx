@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo} from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
@@ -6,25 +6,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
-import { supabase } from '../services/supabase';
+import { useConversations, type ConversationRow } from '../contexts/ConversationsContext';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { MessageCircle, Package, Key } from 'lucide-react-native';
 
 type RoleTab = 'renting' | 'lending';
-
-type ConversationRow = {
-  id: string;
-  renter_id: string;
-  lender_id: string;
-  last_message: string | null;
-  last_message_at: string | null;
-  renter_last_read_at: string | null;
-  lender_last_read_at: string | null;
-  item_title: string;
-  renter_name: string;
-  lender_name: string;
-};
 
 type Props = {
   navigation: NativeStackNavigationProp<ChatsStackParamList, 'ConversationsList'>;
@@ -33,82 +20,30 @@ type Props = {
 export default function ChatsScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const [conversations, setConversations] = useState<ConversationRow[]>([]);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [roleTab, setRoleTab] = useState<RoleTab>('renting');
 
-  useFocusEffect(
-    useCallback(() => {
-      loadConversations();
-    }, [])
-  );
+  // All conversation data and unread state comes from the single shared
+  // context (ConversationsProvider, mounted once at the app root) — the same
+  // live-updating source the bottom tab badge reads from, so this screen's
+  // role-tab badges and green dots can never drift out of sync with it.
+  const {
+    currentUserId, loading,
+    rentingConversations, lendingConversations,
+    rentingUnreadCount, lendingUnreadCount,
+    isUnread, reload,
+  } = useConversations();
 
-  async function loadConversations() {
-    setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setLoading(false); return; }
-    setCurrentUserId(user.id);
-
-    const { data, error } = await supabase
-      .from('conversations')
-      .select(`
-        id, renter_id, lender_id, last_message, last_message_at,
-        renter_last_read_at, lender_last_read_at,
-        items(title),
-        renter:profiles!conversations_renter_id_fkey(full_name),
-        lender:profiles!conversations_lender_id_fkey(full_name)
-      `)
-      .order('last_message_at', { ascending: false });
-
-    if (!error && data) {
-      setConversations(
-        (data as any[]).map((c) => ({
-          id: c.id,
-          renter_id: c.renter_id,
-          lender_id: c.lender_id,
-          last_message: c.last_message,
-          last_message_at: c.last_message_at,
-          renter_last_read_at: c.renter_last_read_at,
-          lender_last_read_at: c.lender_last_read_at,
-          item_title: c.items?.title ?? 'Item',
-          renter_name: c.renter?.full_name ?? 'Renter',
-          lender_name: c.lender?.full_name ?? 'Lender',
-        }))
-      );
-    }
-    setLoading(false);
-  }
+  // Safety net matching the one already used in ChatRoomScreen: catches
+  // anything the realtime subscription might have missed (socket drop,
+  // app backgrounded) by re-syncing whenever this screen regains focus.
+  useFocusEffect(useCallback(() => { reload(); }, [reload]));
 
   function otherName(conv: ConversationRow): string {
     if (!currentUserId) return '';
     return conv.renter_id === currentUserId ? conv.lender_name : conv.renter_name;
   }
 
-  function isUnread(conv: ConversationRow): boolean {
-    if (!currentUserId || !conv.last_message_at) return false;
-    const myLastRead = conv.renter_id === currentUserId
-      ? conv.renter_last_read_at
-      : conv.lender_last_read_at;
-    if (!myLastRead) return true;
-    return new Date(conv.last_message_at) > new Date(myLastRead);
-  }
-
-  // A conversation belongs to Renting if the current user is the renter, and to
-  // Lending if they're the item owner — conversations.lender_id already tracks
-  // that (set to items.owner_id when the conversation is created), so no join
-  // needed. ChatRoomScreen itself is unchanged; only this list is split (SAS).
-  const rentingConvs = useMemo(
-    () => conversations.filter(c => c.renter_id === currentUserId),
-    [conversations, currentUserId]
-  );
-  const lendingConvs = useMemo(
-    () => conversations.filter(c => c.lender_id === currentUserId),
-    [conversations, currentUserId]
-  );
-  const rentingUnreadCount = useMemo(() => rentingConvs.filter(isUnread).length, [rentingConvs, currentUserId]);
-  const lendingUnreadCount = useMemo(() => lendingConvs.filter(isUnread).length, [lendingConvs, currentUserId]);
-  const visibleConvs = roleTab === 'renting' ? rentingConvs : lendingConvs;
+  const visibleConvs = roleTab === 'renting' ? rentingConversations : lendingConversations;
 
   function formatTime(iso: string | null): string {
     if (!iso) return '';

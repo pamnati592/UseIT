@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NavigatorScreenParams } from '@react-navigation/native';
 import { House, Sparkles, MessageCircle, User, Plus, type LucideIcon } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
-import { useUnreadCount } from '../hooks/useUnreadCount';
+import { ConversationsProvider, useConversations } from '../contexts/ConversationsContext';
 import HomeStackNavigator from './HomeStackNavigator';
 import ChatsStackNavigator from './ChatsStackNavigator';
 import type { ChatsStackParamList } from './ChatsStackNavigator';
@@ -37,8 +37,19 @@ const TAB_LABELS: Partial<Record<keyof MainTabParamList, string>> = {
 };
 
 export default function MainTabNavigator() {
+  // Mounted once here, at the root of the whole authenticated app — every
+  // unread signal (this tab badge, the Chats screen's role-tab badges, its
+  // green dots) reads from this one instance, never a separate copy.
+  return (
+    <ConversationsProvider>
+      <MainTabNavigatorInner />
+    </ConversationsProvider>
+  );
+}
+
+function MainTabNavigatorInner() {
   const { colors } = useTheme();
-  const unreadCount = useUnreadCount();
+  const { totalUnreadCount } = useConversations();
   // app.json sets edgeToEdgeEnabled, so the tab bar draws underneath Android's
   // navigation bar / gesture pill. A hardcoded height put the tab labels behind it;
   // the bottom inset has to be added to both the height and the padding.
@@ -93,7 +104,7 @@ export default function MainTabNavigator() {
       <Tab.Screen
         name="Chats"
         component={ChatsStackNavigator}
-        options={{ tabBarBadge: unreadCount > 0 ? unreadCount : undefined }}
+        options={{ tabBarBadge: totalUnreadCount > 0 ? totalUnreadCount : undefined }}
       />
       <Tab.Screen name="Profile" component={ProfileStackNavigator} />
     </Tab.Navigator>

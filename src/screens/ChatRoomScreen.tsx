@@ -452,8 +452,8 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   }
 
   // Update conversation timestamp BEFORE inserting the message so that when the
-  // realtime INSERT event fires, useUnreadCount already sees the updated last_message_at.
-  // `preview` is what the Chats list shows. The full `content` is the record kept on
+  // realtime UPDATE event fires, ConversationsContext already sees the updated
+  // last_message_at. `preview` is what the Chats list shows. The full `content` is the record kept on
   // the message row, but it reads as a paragraph in a one-line list, so status changes
   // pass a short summary instead: what changed, and what happens next. It has to stay
   // role-neutral — both parties read the same conversations.last_message string.

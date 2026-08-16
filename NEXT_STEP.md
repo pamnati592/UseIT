@@ -1,5 +1,17 @@
 # Next Suggested Step — For Nati 👋
 
+## ✅ Backlog P done — unread signals unified into one live source (2026-08-16)
+User reported the bottom-tab badge (red), the Chats screen's Renting/Lending badges (yellow), and each conversation's green dot felt out of sync when sending messages — described purely from symptoms, no theory. Root cause matched backlog P exactly: red had its own live realtime subscription mounted once at the app root (`useUnreadCount`), but yellow/green were computed from `ChatsScreen`'s own local fetch that only ran on screen focus — no live update mechanism at all. Sitting on the Chats screen while a message arrived elsewhere left yellow/green frozen while red updated instantly.
+
+Fixed by building the single shared source backlog P called for, not another patch:
+- New `ConversationsProvider` (`src/contexts/ConversationsContext.tsx`), mounted once in `MainTabNavigator` (the actual root of the authenticated app) wrapping the whole tab tree. Owns one `conversations` fetch, one realtime subscription, one `chatBus` subscription — everything downstream reads from this single instance.
+- **Subscribes to `conversations` UPDATE, not `messages` INSERT.** `last_message_at`/`*_last_read_at` are the two fields every unread computation actually reads, and both now land in the same atomic UPDATE per the earlier badge-race fix — watching the table those live in directly is more precise than the old approach of refetching on every `messages` INSERT app-wide.
+- `MainTabNavigator` (red) and `ChatsScreen` (yellow badges + green dots) both now read `totalUnreadCount`/`rentingUnreadCount`/`lendingUnreadCount`/`isUnread()` from this one context instead of three independently-computed values — same underlying data, same triggers, can't drift apart.
+- Deleted `src/hooks/useUnreadCount.ts` (fully superseded) and `ChatsScreen`'s local `loadConversations`/`useState` conversation-fetching (replaced by the context; kept a focus-triggered `reload()` call as the same kind of safety net `ChatRoomScreen` already uses for dropped realtime events).
+- Highlight/Badge Jump (the blue in-conversation glow) wasn't touched — user described it separately as working, and it's unrelated to unread counting; `ChatsScreen`'s tap handler still reads the same `*_last_read_at` fields, now from context instead of local state.
+
+**Not yet tested on a real device.** This is the one worth testing carefully given how many symptoms fed into it: send messages back and forth, watch all three signals (red/yellow/green) update together — not just eventually agree, but move at the same time — while switching bottom tabs and sitting idle on the Chats screen.
+
 ## ✅ Stripe payment sheet now saves the card between payments (2026-08-16)
 Requested to cut testing friction — retyping the test card (4242 4242 4242 4242 + expiry/CVC/ZIP) on every single payment was slow. `create-payment-intent` now creates a persistent Stripe Customer per user (stored on new `profiles.stripe_customer_id`, created once and reused after) and an Ephemeral Key each call, attaches the Customer to the PaymentIntent, and returns both to the client. `handlePay`/`handlePayPurchase` pass `customerId`/`customerEphemeralKeySecret` into `initPaymentSheet` — this is what lets the sheet offer "save this card" and show it saved on later payments (one tap + Face ID instead of retyping). Pure JS + edge-function change, no native rebuild needed — just reload. **Not yet tested on a real device.**
 
