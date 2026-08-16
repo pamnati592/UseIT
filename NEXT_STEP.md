@@ -1,5 +1,13 @@
 # Next Suggested Step — For Nati 👋
 
+## ✅ Backlog E — weighted feed ranking (2026-08-16)
+`get_feed` ranked by distance only. Extended into a weighted score exactly matching the backlog's factors: **distance 50%, lender score (from N) 25%, interest match 15%, recency 10%.** The radius filter's behavior is unchanged — still a hard cutoff on which items appear; this only reorders within that set. `auth.uid()` internally, no new client-facing parameter, no client changes needed (same RPC signature).
+- Distance scores relative to the *selected* radius (linear falloff) when one's chosen, a gentler decay when it's "All", neutral when there's no location signal at all — not a fixed constant either way.
+- Lender score: brand-new lenders (0/no ratings) get a neutral 0.6 for ranking purposes specifically, deliberately more forgiving than the Trust Score tiers (spec 4.12) that treat 0 as a real signal for fee discounts — a cold-start item shouldn't be buried just because its lender has no reviews yet.
+- Interest match: binary overlap between `profiles.interests` and the item's `category`-or-`tags` (confirmed both use the same vocabulary, e.g. `photography`, `camping`).
+- Recency: exponential decay, ~30-day half-life — deliberately faster than the ~180-day half-life used for reputation (a feed should turn over faster than trust does).
+- **Verified live**: called `get_feed` directly against real data — the closest item (0m) ranked 4th, not 1st, because other factors pulled it down. Confirms the blend is actually blending, not just distance with extra steps.
+
 ## ✅ Backlog N — retroactive reputation scoring (2026-08-16)
 Replaced the plain `avg(rating.score)` with a weighted-recency blend of ratings + behavioral signals, as proposed and confirmed before building (this feeds the live Trust Score / fee-discount system per spec 4.12, so it wasn't guessed at silently):
 - `recompute_lender_score`/`recompute_renter_score`: 70% weighted-recency rating average (half-life ~180 days) + 30% behavioral score. Lender behavior = response time to requests + inverse cancellation rate. Renter behavior = on-time return + no-disputes + inverse cancellation rate. Before any rating exists, behavior alone stands in.
@@ -231,10 +239,6 @@ When you build the QR flow, wire any status change (item handed over, item retur
 - User confirmed (2026-07-14): they want a genuine formula eventually, not the hardcoded placeholder — but explicitly said not to build it now, just track it here.
 - Context: `QRDisplayScreen`/`QRScanScreen` currently show a hardcoded "Impact Score" (0–5 number + CO₂ stat) on the return-done screen — conflates the real Trust Score (now live via M's `lender_score`/`renter_score`) with an undefined environmental metric.
 - Discussed direction (not yet decided): short-term swap those screens to show the real trust score instead of the fake number (cheap, reuses M); a real CO2-based formula would need a category → emissions-avoided data table and is explicitly listed as Out of Scope for MVP in CLAUDE.md section 6 ("Impact Score — deferred to future version after market feedback") — worth a deliberate product decision before building.
-
-### E. Feed ranking algorithm (beyond distance)
-- Current `get_feed` ranks by distance only. Extend the weighted formula with: lender score, interest match (intersect `profiles.interests` with `items.category`/tags), recency.
-- Likely a new `p_user_id` parameter or just use `auth.uid()` internally as it already does for the owner filter.
 
 ### Q. Bulk photo scan — auto-fill multiple items from one photo
 - In `AddItemScreen`, add a "Scan Items" button (camera icon) above the manual form.
