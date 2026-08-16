@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStripe } from '@stripe/stripe-react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
@@ -123,6 +123,11 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const flatListRef = useRef<FlatList<FeedRow>>(null);
+  // Read inside the realtime message handler below, which is set up once per
+  // conversationId and would otherwise close over a stale focus value.
+  const isFocused = useIsFocused();
+  const isFocusedRef = useRef(isFocused);
+  useEffect(() => { isFocusedRef.current = isFocused; }, [isFocused]);
 
   useEffect(() => {
     let mounted = true;
@@ -216,6 +221,13 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                 .single();
               if (tx && mounted) setTransactions((prev) => ({ ...prev, [(tx as Transaction).id]: tx as Transaction }));
             }
+            // Without this, the global Chats badge ticks up for a conversation
+            // the user is already looking at — a message arriving here updates
+            // the visible screen, but nothing else marked it read.
+            if (isFocusedRef.current) {
+              await markAsRead(user.id);
+              chatBus.notify();
+            }
           }
         )
         .on(
@@ -300,6 +312,16 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
             return next;
           });
         }
+
+        // Read status deserves the same safety net: the one-time mount effect's
+        // markAsRead doesn't fire again when an already-mounted screen (e.g. this
+        // tab kept alive in the background by the bottom tab navigator) regains
+        // focus — which left a conversation stuck "unread" even while visible.
+        const { data: { user } } = await supabase.auth.getUser();
+        if (active && user) {
+          await markAsRead(user.id);
+          chatBus.notify();
+        }
       })();
       return () => { active = false; };
     }, [conversationId])
@@ -383,8 +405,13 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     if (!error && data) {
       setMessages(prev => [data as Message, ...prev]);
       const now = new Date().toISOString();
-      await supabase.from('conversations').update({ last_message: content, last_message_at: now }).eq('id', conversationId);
-      await markAsRead(currentUserId);
+      // last_message_at and the sender's own last_read_at land in one update, not
+      // two sequential ones — a gap between them is a real window where any
+      // listener (including the sender's own device) sees "unread" for a message
+      // that was just sent, self-correcting a moment later as a visible flash.
+      const readField = convInfo?.lender_id === currentUserId ? 'lender_last_read_at' : 'renter_last_read_at';
+      await supabase.from('conversations').update({ last_message: content, last_message_at: now, [readField]: now }).eq('id', conversationId);
+      chatBus.notify();
     }
     setSending(false);
   }
@@ -432,9 +459,14 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   // role-neutral — both parties read the same conversations.last_message string.
   async function insertSystemMessage(content: string, transactionId: string, preview?: string) {
     const now = new Date().toISOString();
+    // The actor's own last_read_at lands in the same update as last_message_at —
+    // two sequential calls left a real window where the actor saw an unread badge
+    // on their own action (approve/pay/cancel/etc.) before it self-corrected.
+    const readField = convInfo?.lender_id === currentUserId ? 'lender_last_read_at' : 'renter_last_read_at';
     await supabase.from('conversations').update({
       last_message: preview ?? content,
       last_message_at: now,
+      [readField]: now,
     }).eq('id', conversationId);
     await supabase.from('messages').insert({
       conversation_id: conversationId,
@@ -442,10 +474,6 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       content,
       transaction_id: transactionId,
     });
-    // Without this, the actor who just approved/paid/cancelled sees an unread
-    // badge on their own action — bumping last_message_at with no matching
-    // last_read_at update. send() already does this for typed messages.
-    if (currentUserId) await markAsRead(currentUserId);
     chatBus.notify();
   }
 
@@ -759,13 +787,12 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   async function handleApprovePurchase(purchaseId: string) {
     setActionLoading(true);
     try {
+      // approve_purchase sets the caller's own last_read_at atomically alongside
+      // last_message_at server-side — no client round-trip needed, and no race
+      // window where the approver's own badge flashes unread for their own action.
       const { error } = await supabase.rpc('approve_purchase', { p_purchase: purchaseId });
       if (error) throw error;
       setPurchases(prev => ({ ...prev, [purchaseId]: { ...prev[purchaseId], status: 'approved' } }));
-      // approve_purchase bumps conversations.last_message_at server-side for the
-      // preview/badge — without this, the approver sees an unread badge on
-      // their own action, same bug as insertSystemMessage used to have.
-      if (currentUserId) await markAsRead(currentUserId);
       chatBus.notify();
     } catch (e: any) {
       Alert.alert('Error', e.message);
@@ -780,7 +807,6 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       const { error } = await supabase.rpc('reject_purchase', { p_purchase: purchaseId });
       if (error) throw error;
       setPurchases(prev => ({ ...prev, [purchaseId]: { ...prev[purchaseId], status: 'rejected' } }));
-      if (currentUserId) await markAsRead(currentUserId);
       chatBus.notify();
     } catch (e: any) {
       Alert.alert('Error', e.message);
