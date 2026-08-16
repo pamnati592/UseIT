@@ -1,5 +1,9 @@
 # Next Suggested Step — For Nati 👋
 
+## ✅ Self-unread-badge bug fixed (2026-08-13)
+
+User report: approving a rental lit up their *own* unread badge as if a new message had arrived, and briefly showed a phantom "waiting" indicator in Chat after leaving Deal Board. Root cause: `send()` (typed chat messages) always re-marks the sender's own `*_last_read_at` after bumping `conversations.last_message_at` — but `insertSystemMessage()` (used by every status-change action: approve/reject/pay/cancel/decline/dispute) never did, so the actor's own last-read timestamp fell behind their own action's timestamp. Same gap existed in `handleApprovePurchase`/`handleRejectPurchase`, whose RPCs bump the conversation preview server-side. Fixed by calling `markAsRead(currentUserId)` + `chatBus.notify()` in all three places, mirroring `send()`. **Not yet tested on a real device** — verify next: approve/pay/cancel a rental and confirm no self-badge appears, then check the Chats list right after leaving Deal Board.
+
 ## Resume here
 
 **Context:** DB access is via the Supabase MCP. The access token was rotated on **2026-08-13** and now lives in the `env` block (`SUPABASE_ACCESS_TOKEN`) of the `supabase` entry in `~/.claude.json`, not as a `--access-token` flag. If MCP calls return `Unauthorized`, the token has expired again — regenerate at https://supabase.com/dashboard/account/tokens and re-add with `claude mcp add supabase -s user -e SUPABASE_ACCESS_TOKEN=... -- npx -y @supabase/mcp-server-supabase@latest`, then **restart Claude Code** (MCP servers only read config at startup).

@@ -442,6 +442,11 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       content,
       transaction_id: transactionId,
     });
+    // Without this, the actor who just approved/paid/cancelled sees an unread
+    // badge on their own action — bumping last_message_at with no matching
+    // last_read_at update. send() already does this for typed messages.
+    if (currentUserId) await markAsRead(currentUserId);
+    chatBus.notify();
   }
 
   async function handleCancel(transactionId: string) {
@@ -757,6 +762,11 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       const { error } = await supabase.rpc('approve_purchase', { p_purchase: purchaseId });
       if (error) throw error;
       setPurchases(prev => ({ ...prev, [purchaseId]: { ...prev[purchaseId], status: 'approved' } }));
+      // approve_purchase bumps conversations.last_message_at server-side for the
+      // preview/badge — without this, the approver sees an unread badge on
+      // their own action, same bug as insertSystemMessage used to have.
+      if (currentUserId) await markAsRead(currentUserId);
+      chatBus.notify();
     } catch (e: any) {
       Alert.alert('Error', e.message);
     } finally {
@@ -770,6 +780,8 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       const { error } = await supabase.rpc('reject_purchase', { p_purchase: purchaseId });
       if (error) throw error;
       setPurchases(prev => ({ ...prev, [purchaseId]: { ...prev[purchaseId], status: 'rejected' } }));
+      if (currentUserId) await markAsRead(currentUserId);
+      chatBus.notify();
     } catch (e: any) {
       Alert.alert('Error', e.message);
     } finally {
