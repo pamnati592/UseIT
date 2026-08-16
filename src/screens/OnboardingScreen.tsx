@@ -1,7 +1,7 @@
 import { useState, useMemo} from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  TextInput, ScrollView, ActivityIndicator, Alert,
+  TextInput, ScrollView, ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../services/supabase';
@@ -93,6 +93,7 @@ export default function OnboardingScreen({ onFinished }: { onFinished: () => voi
         ))}
       </View>
 
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
 
         {/* STEP 1 – Role */}
@@ -222,6 +223,7 @@ export default function OnboardingScreen({ onFinished }: { onFinished: () => voi
           </>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

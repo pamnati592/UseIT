@@ -26,7 +26,7 @@ export default function MeetingPointScreen({ navigation, route }: Props) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('ConversationsList')}>
           <ChevronLeft size={26} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Meeting Point</Text>

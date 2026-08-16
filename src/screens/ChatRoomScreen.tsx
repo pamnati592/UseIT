@@ -12,6 +12,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
 import { supabase } from '../services/supabase';
 import { chatBus } from '../services/chatBus';
+import { insertSystemMessage as sharedInsertSystemMessage } from '../services/chatMessages';
 import { uploadImage, HANDOFF_EVIDENCE_BUCKET, disputePhotoPath } from '../services/storage';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
@@ -458,23 +459,15 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   // pass a short summary instead: what changed, and what happens next. It has to stay
   // role-neutral — both parties read the same conversations.last_message string.
   async function insertSystemMessage(content: string, transactionId: string, preview?: string) {
-    const now = new Date().toISOString();
-    // The actor's own last_read_at lands in the same update as last_message_at —
-    // two sequential calls left a real window where the actor saw an unread badge
-    // on their own action (approve/pay/cancel/etc.) before it self-corrected.
-    const readField = convInfo?.lender_id === currentUserId ? 'lender_last_read_at' : 'renter_last_read_at';
-    await supabase.from('conversations').update({
-      last_message: preview ?? content,
-      last_message_at: now,
-      [readField]: now,
-    }).eq('id', conversationId);
-    await supabase.from('messages').insert({
-      conversation_id: conversationId,
-      sender_id: currentUserId,
+    if (!currentUserId) return;
+    await sharedInsertSystemMessage({
+      conversationId,
+      transactionId,
+      userId: currentUserId,
+      isLender: convInfo?.lender_id === currentUserId,
       content,
-      transaction_id: transactionId,
+      preview,
     });
-    chatBus.notify();
   }
 
   async function handleCancel(transactionId: string) {

@@ -31,7 +31,10 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
     setDecideLoading(false);
     if (!error) {
       setDecided(status);
-      setTimeout(() => navigation.goBack(), 900);
+      // This screen is reachable from both HomeStack and ProfileStack (with no
+      // shared root screen name), so an unguarded fallback jumps to the Home
+      // tab instead of a specific stack root — always valid either way.
+      setTimeout(() => navigation.canGoBack() ? navigation.goBack() : (navigation as any).getParent()?.navigate('HomeStack'), 900);
     }
   }
   const [items, setItems]           = useState<Item[]>([]);
@@ -107,7 +110,7 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <View style={styles.header}>
-            <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <TouchableOpacity style={styles.backButton} onPress={() => navigation.canGoBack() ? navigation.goBack() : (navigation as any).getParent()?.navigate('HomeStack')}>
               <ChevronLeft size={26} color={colors.text} />
             </TouchableOpacity>
 

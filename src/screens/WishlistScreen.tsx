@@ -89,7 +89,7 @@ export default function WishlistScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('ProfileMain')} style={styles.backBtn}>
           <ChevronLeft size={26} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Wishlist</Text>

@@ -106,7 +106,7 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
           phase === 'pickup'
             ? `${otherName ?? 'The renter'} declined the item, so this rental was cancelled. Their reason is in the chat.`
             : 'This rental is no longer active — see the chat for details.',
-          [{ text: 'OK', onPress: () => { if (navigation.canGoBack()) navigation.goBack(); } }],
+          [{ text: 'OK', onPress: () => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('ConversationsList') }],
         );
       }
     }, 3000);
@@ -141,7 +141,7 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('ConversationsList')}>
           <ChevronLeft size={28} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{title}</Text>
@@ -214,7 +214,7 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
             </View>
 
             {alreadyRated ? (
-              <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.goBack()}>
+              <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('ConversationsList')}>
                 <Text style={styles.primaryBtnText}>Done</Text>
               </TouchableOpacity>
             ) : (
@@ -236,7 +236,7 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
             </View>
             <Text style={styles.doneTitle}>Handoff Complete!</Text>
             <Text style={styles.doneSub}>The rental is now active.</Text>
-            <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.goBack()}>
+            <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('ConversationsList')}>
               <Text style={styles.primaryBtnText}>Done</Text>
             </TouchableOpacity>
           </View>

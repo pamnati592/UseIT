@@ -17,7 +17,6 @@ async function requestPermissions() {
     await Notifications.setNotificationChannelAsync('rental-requests', {
       name: 'Rental Requests',
       importance: Notifications.AndroidImportance.HIGH,
-      sound: 'default',
     });
   }
 
@@ -30,7 +29,7 @@ async function fireRentalNotification(itemTitle: string, renterName: string) {
     content: {
       title: `New rental request for "${itemTitle}"`,
       body: `${renterName} wants to rent your item. Tap to review.`,
-      sound: 'default',
+      sound: true,
       data: {},
     },
     trigger: null, // fire immediately

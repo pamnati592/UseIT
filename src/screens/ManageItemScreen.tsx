@@ -228,7 +228,7 @@ export default function ManageItemScreen({ navigation, route }: Props) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MyItems')}>
           <ChevronLeft size={28} color={colors.text} />
         </TouchableOpacity>
         <View style={styles.headerText}>

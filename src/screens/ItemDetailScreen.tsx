@@ -336,7 +336,9 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
 
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('HomeMain')}
+          // Also reachable via ProfileStack (which has no 'HomeMain' route), so
+          // the fallback jumps to the Home tab instead of a specific stack root.
+          onPress={() => navigation.canGoBack() ? navigation.goBack() : (navigation as any).getParent()?.navigate('HomeStack')}
         >
           <ChevronLeft size={20} color={colors.text} />
           <Text style={styles.backText}>Back</Text>

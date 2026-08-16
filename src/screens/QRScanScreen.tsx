@@ -12,6 +12,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
 import { hasRatedTransaction } from '../services/ratings';
 import { uploadImage, HANDOFF_EVIDENCE_BUCKET, handoffPhotoPath } from '../services/storage';
+import { insertSystemMessage } from '../services/chatMessages';
 import * as Location from 'expo-location';
 import { getCurrentLocationOnce } from '../hooks/useUserLocation';
 import { metersBetween } from '../utils/format';
@@ -110,6 +111,30 @@ export default function QRScanScreen({ navigation, route }: Props) {
       });
       if (scanErr) throw scanErr;
 
+      // Without this, pickup/return produced no Badge Jump and left the
+      // Chats list preview stuck on the previous status — the scanner's
+      // action never told the other party anything changed.
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: conv } = await supabase
+          .from('conversations')
+          .select('lender_id')
+          .eq('id', conversationId)
+          .single();
+        if (conv) {
+          await insertSystemMessage({
+            conversationId,
+            transactionId,
+            userId: user.id,
+            isLender: conv.lender_id === user.id,
+            content: phase === 'pickup'
+              ? `📦 ${itemTitle} handed over! The rental is now active.`
+              : `✅ ${itemTitle} returned! The rental is complete.`,
+            preview: phase === 'pickup' ? '📦 Item handed over · Rental active' : '✅ Item returned · Rental complete',
+          });
+        }
+      }
+
       setStep('done');
     } catch (e: any) {
       const msg = e.message ?? 'Could not complete the handoff.';
@@ -199,7 +224,7 @@ export default function QRScanScreen({ navigation, route }: Props) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('ConversationsList')}>
           <ChevronLeft size={28} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{title}</Text>
@@ -362,7 +387,7 @@ export default function QRScanScreen({ navigation, route }: Props) {
                   <Text style={styles.primaryBtnText}>Rate the Experience</Text>
                 </TouchableOpacity>
               ) : (
-                <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.goBack()}>
+                <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('ConversationsList')}>
                   <Text style={styles.primaryBtnText}>Done</Text>
                 </TouchableOpacity>
               )}

@@ -54,7 +54,7 @@ export default function EditItemScreen({ navigation, route }: Props) {
 
       if (error || !data) {
         Alert.alert('Error', 'Could not load item');
-        navigation.goBack();
+        navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MyItems');
         return;
       }
 
@@ -161,7 +161,7 @@ export default function EditItemScreen({ navigation, route }: Props) {
 
       if (error) throw error;
       Alert.alert('Saved', 'Your item has been updated.', [
-        { text: 'OK', onPress: () => navigation.goBack() },
+        { text: 'OK', onPress: () => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MyItems') },
       ]);
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Could not save item');
@@ -198,7 +198,7 @@ export default function EditItemScreen({ navigation, route }: Props) {
 
               const { error } = await supabase.from('items').delete().eq('id', itemId);
               if (error) throw error;
-              navigation.goBack();
+              navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MyItems');
             } catch (e: any) {
               Alert.alert('Error', e?.message ?? 'Could not delete item');
             } finally {
@@ -220,7 +220,7 @@ export default function EditItemScreen({ navigation, route }: Props) {
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
 
           <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <TouchableOpacity onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MyItems')} style={styles.backBtn}>
               <Text style={styles.backArrow}>‹</Text>
             </TouchableOpacity>
             <Text style={styles.heading}>Edit Item</Text>

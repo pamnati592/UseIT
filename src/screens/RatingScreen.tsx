@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Alert, ActivityIndicator,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, Star, CircleCheck } from 'lucide-react-native';
@@ -74,13 +75,14 @@ export default function RatingScreen({ navigation, route }: Props) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('ConversationsList')}>
           <ChevronLeft size={28} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Rate the Experience</Text>
         <View style={styles.backBtn} />
       </View>
 
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={styles.scroll}>
         {checking ? (
           <ActivityIndicator style={{ marginTop: 40 }} color={colors.text} />
@@ -104,7 +106,7 @@ export default function RatingScreen({ navigation, route }: Props) {
                 />
               ))}
             </View>
-            <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.goBack()}>
+            <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('ConversationsList')}>
               <Text style={styles.primaryBtnText}>Done</Text>
             </TouchableOpacity>
           </View>
@@ -168,6 +170,7 @@ export default function RatingScreen({ navigation, route }: Props) {
           </>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
