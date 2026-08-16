@@ -38,6 +38,7 @@ export default function AdminDisputesScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [damageAmounts, setDamageAmounts] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -63,11 +64,20 @@ export default function AdminDisputesScreen({ navigation }: Props) {
   }
 
   async function resolve(transactionId: string, favor: 'renter' | 'lender') {
+    const damageRaw = favor === 'lender' ? damageAmounts[transactionId]?.trim() : '';
+    const damageAmount = damageRaw ? Number(damageRaw) : 0;
+    if (damageRaw && (!Number.isFinite(damageAmount) || damageAmount <= 0)) {
+      Alert.alert('Invalid damage amount', 'Enter a positive number, or leave it blank if no damage charge applies.');
+      return;
+    }
+
     Alert.alert(
       `Rule in favor of the ${favor}?`,
       favor === 'renter'
         ? 'The renter will receive a full refund. This cannot be undone.'
-        : 'The lender keeps the payment already taken. This cannot be undone.',
+        : damageAmount > 0
+          ? `The lender keeps the payment already taken, and ₪${damageAmount} will be charged to the renter for damage. This cannot be undone.`
+          : 'The lender keeps the payment already taken. This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -86,6 +96,14 @@ export default function AdminDisputesScreen({ navigation }: Props) {
                   body: { transaction_id: transactionId, reason: 'admin_dispute_resolved' },
                 });
                 if (refundError) throw refundError;
+              } else if (damageAmount > 0) {
+                const { data: chargeResult, error: chargeError } = await supabase.functions.invoke('admin-charge', {
+                  body: { transaction_id: transactionId, amount: damageAmount, reason: 'damage' },
+                });
+                if (chargeError) throw chargeError;
+                if (chargeResult && !chargeResult.ok) {
+                  Alert.alert('Damage charge failed', 'The card on file was declined or missing — the renter has been notified in chat to arrange payment directly.');
+                }
               }
 
               setDisputes(prev => prev.filter(d => d.transaction_id !== transactionId));
@@ -151,6 +169,15 @@ export default function AdminDisputesScreen({ navigation }: Props) {
           value={notes[d.transaction_id] ?? ''}
           onChangeText={(t) => setNotes(prev => ({ ...prev, [d.transaction_id]: t }))}
           multiline
+        />
+
+        <TextInput
+          style={[styles.noteInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.bg, minHeight: undefined, height: 42 }]}
+          placeholder="Damage amount to charge renter (₪, optional — only applies if favoring the lender)"
+          placeholderTextColor={colors.textMuted}
+          keyboardType="numeric"
+          value={damageAmounts[d.transaction_id] ?? ''}
+          onChangeText={(t) => setDamageAmounts(prev => ({ ...prev, [d.transaction_id]: t }))}
         />
 
         <View style={styles.messageRow}>

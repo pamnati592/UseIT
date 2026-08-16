@@ -721,6 +721,22 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   }
 
   async function handlePay(transactionId: string) {
+    // Rentals save the payment method for off-session use automatically (not an
+    // opt-in checkbox in the sheet below, since setup_future_usage is now always
+    // set server-side) — disclosed here, before the sheet opens, since the sheet
+    // itself won't show a "save card" toggle to make that visible.
+    const confirmed = await new Promise<boolean>((resolve) => {
+      Alert.alert(
+        'Card kept on file',
+        'Your card will be securely saved so UseIT can charge it later for a late-return fee or assessed damage, if any. You\'ll always be notified in chat before or when this happens.',
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Continue to Payment', onPress: () => resolve(true) },
+        ]
+      );
+    });
+    if (!confirmed) return;
+
     setPayLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();

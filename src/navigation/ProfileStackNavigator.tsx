@@ -12,6 +12,7 @@ import AdminHomeScreen from '../screens/AdminHomeScreen';
 import AdminDisputesScreen from '../screens/AdminDisputesScreen';
 import AdminItemsScreen from '../screens/AdminItemsScreen';
 import AdminUsersScreen from '../screens/AdminUsersScreen';
+import AdminOverdueScreen from '../screens/AdminOverdueScreen';
 import SupportThreadScreen from '../screens/SupportThreadScreen';
 import type { Item } from '../types/item';
 
@@ -29,6 +30,7 @@ export type ProfileStackParamList = {
   AdminDisputes: undefined;
   AdminItems: undefined;
   AdminUsers: undefined;
+  AdminOverdue: undefined;
   SupportThread: { threadId: string; title: string };
 };
 
@@ -50,6 +52,7 @@ export default function ProfileStackNavigator() {
       <Stack.Screen name="AdminDisputes" component={AdminDisputesScreen} options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="AdminItems" component={AdminItemsScreen} options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="AdminUsers" component={AdminUsersScreen} options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="AdminOverdue" component={AdminOverdueScreen} options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="SupportThread" component={SupportThreadScreen as any} options={{ animation: 'slide_from_right' }} />
     </Stack.Navigator>
   );

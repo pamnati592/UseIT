@@ -7,7 +7,7 @@ import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator'
 import { supabase } from '../services/supabase';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
-import { ChevronLeft, Scale, PackageCheck, Users, ChevronRight } from 'lucide-react-native';
+import { ChevronLeft, Scale, PackageCheck, Users, Clock, ChevronRight } from 'lucide-react-native';
 
 type Props = NativeStackScreenProps<ProfileStackParamList, 'AdminHome'>;
 
@@ -16,19 +16,22 @@ export default function AdminHomeScreen({ navigation }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [disputeCount, setDisputeCount] = useState(0);
   const [pendingItemCount, setPendingItemCount] = useState(0);
+  const [overdueCount, setOverdueCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
       (async () => {
-        const [disputes, items] = await Promise.all([
+        const [disputes, items, overdue] = await Promise.all([
           supabase.rpc('admin_list_disputes'),
           supabase.rpc('admin_list_pending_items'),
+          supabase.rpc('admin_list_overdue_rentals'),
         ]);
         if (!active) return;
         setDisputeCount(disputes.data?.length ?? 0);
         setPendingItemCount(items.data?.length ?? 0);
+        setOverdueCount(overdue.data?.length ?? 0);
         setLoading(false);
       })();
       return () => { active = false; };
@@ -56,6 +59,13 @@ export default function AdminHomeScreen({ navigation }: Props) {
       label: 'User Management',
       count: null,
       sub: 'Search users, ban or unban',
+    },
+    {
+      key: 'AdminOverdue' as const,
+      icon: Clock,
+      label: 'Overdue Rentals',
+      count: overdueCount,
+      sub: 'Late-return fees and 2-week overdue penalties',
     },
   ];
 

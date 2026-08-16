@@ -135,6 +135,14 @@ export default function QRScanScreen({ navigation, route }: Props) {
         }
       }
 
+      // Best-effort: the return itself has already succeeded above, so a failure
+      // here (network blip, no saved card) must not surface as a failed handoff —
+      // charge-late-fee itself posts a chat message either way (charged, or
+      // "please arrange payment"), that's the notification surface, not this screen.
+      if (phase === 'return') {
+        supabase.functions.invoke('charge-late-fee', { body: { transaction_id: transactionId } }).catch(() => {});
+      }
+
       setStep('done');
     } catch (e: any) {
       const msg = e.message ?? 'Could not complete the handoff.';

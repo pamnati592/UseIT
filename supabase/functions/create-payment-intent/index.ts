@@ -64,6 +64,7 @@ serve(async (req) => {
     let amount: number;
     let description: string;
     let metadata: Record<string, string>;
+    let isRental = false;
 
     if (transaction_id) {
       // Fetch transaction and verify the caller is the renter
@@ -85,6 +86,7 @@ serve(async (req) => {
       amount = Math.round(tx.total_price * 100);
       metadata = { transaction_id, renter_id: user.id };
       description = `SwipeAndRent: ${(tx as any).items?.title ?? 'Item rental'}`;
+      isRental = true;
     } else {
       // Fetch purchase and verify the caller is the buyer
       const { data: purchase, error: pError } = await supabase
@@ -109,12 +111,19 @@ serve(async (req) => {
 
     // Create Stripe PaymentIntent — amount in agorot (1/100 of shekel). Attached to
     // the customer so the sheet can offer "save this card" and show it saved next time.
+    //
+    // Rentals mandatorily save the payment method for off-session use (not an opt-in
+    // checkbox) — spec 4.10's damage/late-fee charges only work if UseIT can charge the
+    // renter after the fact, without them present to re-authenticate. This is disclosed
+    // to the renter on the payment screen before they confirm. Purchases are a one-time
+    // sale with no ongoing custody risk, so they don't need this.
     const paymentIntent = await stripe.paymentIntents.create({
       amount,
       currency: 'ils',
       customer: customerId,
       metadata,
       description,
+      ...(isRental ? { setup_future_usage: 'off_session' as const } : {}),
     });
 
     // Record which Stripe payment belongs to this rental/purchase. Without it there
