@@ -28,6 +28,34 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401, headers: corsHeaders });
     }
 
+    // Service role from here on: profile/transaction/purchase writes below are
+    // server bookkeeping, not user actions gated by RLS.
+    const admin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    // Attach a persistent Stripe Customer to the user (created once, reused after)
+    // so the payment sheet can offer to save a card and skip re-entering it next
+    // time — a bare PaymentIntent with no customer can't have a saved payment method.
+    const { data: profile } = await admin
+      .from('profiles')
+      .select('stripe_customer_id')
+      .eq('id', user.id)
+      .single();
+
+    let customerId = profile?.stripe_customer_id ?? null;
+    if (!customerId) {
+      const customer = await stripe.customers.create({ metadata: { supabase_user_id: user.id } });
+      customerId = customer.id;
+      await admin.from('profiles').update({ stripe_customer_id: customerId }).eq('id', user.id);
+    }
+
+    const ephemeralKey = await stripe.ephemeralKeys.create(
+      { customer: customerId },
+      { apiVersion: '2023-10-16' }
+    );
+
     const { transaction_id, purchase_id } = await req.json();
     if (!transaction_id && !purchase_id) {
       return new Response(JSON.stringify({ error: 'transaction_id or purchase_id required' }), { status: 400, headers: corsHeaders });
@@ -79,10 +107,12 @@ serve(async (req) => {
       description = `SwipeAndRent: ${(purchase as any).items?.title ?? 'Item purchase'} (purchase)`;
     }
 
-    // Create Stripe PaymentIntent — amount in agorot (1/100 of shekel)
+    // Create Stripe PaymentIntent — amount in agorot (1/100 of shekel). Attached to
+    // the customer so the sheet can offer "save this card" and show it saved next time.
     const paymentIntent = await stripe.paymentIntents.create({
       amount,
       currency: 'ils',
+      customer: customerId,
       metadata,
       description,
     });
@@ -97,11 +127,6 @@ serve(async (req) => {
     // ('pending','approved') — the same kind of policy that has already silently
     // swallowed a write in this project. This is server bookkeeping, not a user
     // action, so it should not depend on the caller's policy surface.
-    const admin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-
     const { error: linkError } = transaction_id
       ? await admin.from('transactions').update({ stripe_payment_intent_id: paymentIntent.id }).eq('id', transaction_id)
       : await admin.from('purchases').update({ stripe_payment_intent_id: paymentIntent.id }).eq('id', purchase_id);
@@ -118,7 +143,11 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ client_secret: paymentIntent.client_secret }),
+      JSON.stringify({
+        client_secret: paymentIntent.client_secret,
+        customer_id: customerId,
+        ephemeral_key: ephemeralKey.secret,
+      }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err: any) {

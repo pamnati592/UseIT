@@ -1,5 +1,8 @@
 # Next Suggested Step — For Nati 👋
 
+## ✅ Stripe payment sheet now saves the card between payments (2026-08-16)
+Requested to cut testing friction — retyping the test card (4242 4242 4242 4242 + expiry/CVC/ZIP) on every single payment was slow. `create-payment-intent` now creates a persistent Stripe Customer per user (stored on new `profiles.stripe_customer_id`, created once and reused after) and an Ephemeral Key each call, attaches the Customer to the PaymentIntent, and returns both to the client. `handlePay`/`handlePayPurchase` pass `customerId`/`customerEphemeralKeySecret` into `initPaymentSheet` — this is what lets the sheet offer "save this card" and show it saved on later payments (one tap + Face ID instead of retyping). Pure JS + edge-function change, no native rebuild needed — just reload. **Not yet tested on a real device.**
+
 ## ✅ Full audit of the read/unread badge pipeline (2026-08-16)
 User reported vague "weird badge / green dot" behavior in chat without being able to pin down specifics — a systematic read of `ChatRoomScreen`, `ChatsScreen`, `useUnreadCount`, `chatBus` turned up three real bugs, on top of the self-badge fix from earlier in the session (which itself turned out to be an incomplete fix — see below):
 

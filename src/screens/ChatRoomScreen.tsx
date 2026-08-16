@@ -698,13 +698,17 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
           body: JSON.stringify({ transaction_id: transactionId }),
         }
       );
-      const { client_secret, error: fnError } = await res.json();
+      const { client_secret, customer_id, ephemeral_key, error: fnError } = await res.json();
       if (fnError) throw new Error(fnError);
 
-      // Initialise the payment sheet with the client secret
+      // Initialise the payment sheet with the client secret. Passing customer +
+      // ephemeral key lets the sheet offer "save this card" and show it saved on
+      // future payments instead of retyping card number/expiry/CVC every time.
       const { error: initError } = await initPaymentSheet({
         merchantDisplayName: 'SwipeAndRent',
         paymentIntentClientSecret: client_secret,
+        customerId: customer_id,
+        customerEphemeralKeySecret: ephemeral_key,
         defaultBillingDetails: { name: '' },
       });
       if (initError) throw new Error(initError.message);
@@ -757,12 +761,14 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
           body: JSON.stringify({ purchase_id: purchaseId }),
         }
       );
-      const { client_secret, error: fnError } = await res.json();
+      const { client_secret, customer_id, ephemeral_key, error: fnError } = await res.json();
       if (fnError) throw new Error(fnError);
 
       const { error: initError } = await initPaymentSheet({
         merchantDisplayName: 'SwipeAndRent',
         paymentIntentClientSecret: client_secret,
+        customerId: customer_id,
+        customerEphemeralKeySecret: ephemeral_key,
         defaultBillingDetails: { name: '' },
       });
       if (initError) throw new Error(initError.message);
