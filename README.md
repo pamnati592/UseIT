@@ -85,19 +85,16 @@ Built as a cross-platform mobile app (iOS + Android) using React Native and Expo
 
 ## Try It
 
-The fastest way to run the app is with **Expo Go** (no build step, no store):
-
-1. Install [Expo Go](https://expo.dev/go) on your phone
-2. Clone the repo and start the server:
+**Expo Go won't run this app** — `@stripe/stripe-react-native` needs native code that only ships in a custom dev client, so payments (and anything that touches them) fail under Expo Go. Build a dev client instead:
 
 ```bash
 git clone https://github.com/pamnati592/SwipeAndRent.git
 cd SwipeAndRent
 npm install
-npx expo start --tunnel
+npx expo run:ios      # or: npx expo run:android
 ```
 
-3. Scan the QR code shown in the terminal with Expo Go
+That builds and installs a dev client on a simulator/emulator or a connected device. On a free Apple developer account, an on-device build's signature expires after 7 days — re-run `npx expo run:ios --device` to refresh it.
 
 ---
 
@@ -107,14 +104,12 @@ npx expo start --tunnel
 # Install dependencies
 npm install
 
-# Start Metro bundler (use --tunnel if on a different network)
+# Rebuild and launch the dev client
+npx expo run:ios       # iOS simulator or connected device
+npx expo run:android   # Android emulator or connected device
+
+# Once the dev client is installed, subsequent runs only need the bundler:
 npx expo start
-
-# iOS Simulator
-npx expo start --ios
-
-# Android Emulator
-npx expo start --android
 ```
 
 > Requires a `.env` file with your Supabase URL, anon key, Stripe publishable key, and Google Maps API key.

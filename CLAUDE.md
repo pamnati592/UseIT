@@ -2,7 +2,7 @@
 
 ## ⚠️ MANDATORY – Read Before Every Response
 **At the start of every conversation and before every answer, read the product spec file:**
-`/Users/netanelmac/Desktop/פרוייקטים/SwapAndRent/אפיון מוצר swapAndRent.pdf`
+`product-spec.pdf` (repo root)
 This is the single source of truth for the project. Never rely on prior memory — always verify against this file.
 
 ## ⚠️ MANDATORY – Before Starting Work & After Any Long Break
