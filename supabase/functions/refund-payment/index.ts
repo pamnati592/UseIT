@@ -39,7 +39,8 @@ serve(async (req) => {
     }
 
     const { transaction_id, reason } = await req.json();
-    if (!transaction_id || (reason !== 'lender_cancelled' && reason !== 'declined_at_pickup')) {
+    const validReasons = ['lender_cancelled', 'declined_at_pickup', 'admin_dispute_resolved'];
+    if (!transaction_id || !validReasons.includes(reason)) {
       return new Response(JSON.stringify({ error: 'transaction_id and a valid reason are required' }), { status: 400, headers: corsHeaders });
     }
 
@@ -53,25 +54,34 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Transaction not found' }), { status: 404, headers: corsHeaders });
     }
 
-    // Reason gates who may trigger this and matches the two client entry points:
-    // the lender's Cancel button, and the renter's Decline Item at pickup.
+    // Reason gates who may trigger this and matches the client entry points:
+    // the lender's Cancel button, the renter's Decline Item at pickup, and
+    // the admin console's dispute resolution.
     if (reason === 'lender_cancelled' && user.id !== tx.lender_id) {
       return new Response(JSON.stringify({ error: 'Only the lender can cancel this rental' }), { status: 403, headers: corsHeaders });
     }
     if (reason === 'declined_at_pickup' && user.id !== tx.renter_id) {
       return new Response(JSON.stringify({ error: 'Only the renter can decline at pickup' }), { status: 403, headers: corsHeaders });
     }
+
+    const admin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    if (reason === 'admin_dispute_resolved') {
+      const { data: profile } = await admin.from('profiles').select('is_admin').eq('id', user.id).single();
+      if (!profile?.is_admin) {
+        return new Response(JSON.stringify({ error: 'Admin only' }), { status: 403, headers: corsHeaders });
+      }
+    }
+
     if (tx.status !== 'cancelled') {
       return new Response(JSON.stringify({ error: 'Transaction must already be cancelled before refunding' }), { status: 400, headers: corsHeaders });
     }
     if (!tx.stripe_payment_intent_id) {
       return new Response(JSON.stringify({ error: 'No payment was taken for this rental' }), { status: 400, headers: corsHeaders });
     }
-
-    const admin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
 
     // Idempotency: a retry (flaky network, double-tap) must not refund twice.
     // refunds.transaction_id is also unique at the DB level as a second line of defense.
@@ -84,9 +94,12 @@ serve(async (req) => {
       return new Response(JSON.stringify(existing), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // The renter never took the item, so timing doesn't apply — this isn't a
-    // cancellation penalty case, it's a failed handoff.
-    const percentage = reason === 'declined_at_pickup' ? 100 : refundPercentage(tx.start_date);
+    // declined_at_pickup: the renter never took the item, so timing doesn't
+    // apply. admin_dispute_resolved: an admin ruled in the renter's favor —
+    // also not a cancellation-timing case.
+    const percentage = (reason === 'declined_at_pickup' || reason === 'admin_dispute_resolved')
+      ? 100
+      : refundPercentage(tx.start_date);
     const amount = Math.round(tx.total_price * (percentage / 100) * 100); // agorot
 
     let stripeRefundId: string | null = null;

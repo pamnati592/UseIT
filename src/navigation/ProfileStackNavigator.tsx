@@ -8,6 +8,10 @@ import EditItemScreen from '../screens/EditItemScreen';
 import ItemDetailScreen from '../screens/ItemDetailScreen';
 import PublicProfileScreen from '../screens/PublicProfileScreen';
 import HistoryScreen from '../screens/HistoryScreen';
+import AdminHomeScreen from '../screens/AdminHomeScreen';
+import AdminDisputesScreen from '../screens/AdminDisputesScreen';
+import AdminItemsScreen from '../screens/AdminItemsScreen';
+import AdminUsersScreen from '../screens/AdminUsersScreen';
 import type { Item } from '../types/item';
 
 export type ProfileStackParamList = {
@@ -20,6 +24,10 @@ export type ProfileStackParamList = {
   ItemDetail: { item: Item; openRent?: boolean; prefilledStart?: string; prefilledEnd?: string };
   PublicProfile: { userId: string; userName: string; approveTransactionId?: string; requestSummary?: string };
   History: undefined;
+  AdminHome: undefined;
+  AdminDisputes: undefined;
+  AdminItems: undefined;
+  AdminUsers: undefined;
 };
 
 const Stack = createNativeStackNavigator<ProfileStackParamList>();
@@ -36,6 +44,10 @@ export default function ProfileStackNavigator() {
       <Stack.Screen name="ItemDetail" component={ItemDetailScreen as any} options={{ animation: 'slide_from_bottom' }} />
       <Stack.Screen name="PublicProfile" component={PublicProfileScreen as any} options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="History" component={HistoryScreen} options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="AdminHome" component={AdminHomeScreen} options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="AdminDisputes" component={AdminDisputesScreen} options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="AdminItems" component={AdminItemsScreen} options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="AdminUsers" component={AdminUsersScreen} options={{ animation: 'slide_from_right' }} />
     </Stack.Navigator>
   );
 }

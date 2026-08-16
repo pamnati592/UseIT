@@ -16,7 +16,7 @@ import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
 import {
-  ChevronRight, MapPin, Pencil, Package, ClipboardList, Heart, Clock, Repeat, Moon, Sun, LogOut,
+  ChevronRight, MapPin, Pencil, Package, ClipboardList, Heart, Clock, Repeat, Moon, Sun, LogOut, ShieldCheck,
 } from 'lucide-react-native';
 
 type Nav = NativeStackNavigationProp<ProfileStackParamList, 'ProfileMain'>;
@@ -53,6 +53,7 @@ export default function ProfileScreen() {
   const [avatarUrl, setAvatarUrl]     = useState<string | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [items, setItems]             = useState<Item[]>([]);
+  const [isAdmin, setIsAdmin]         = useState(false);
 
   const activeLabel = TEST_ACCOUNTS.find(a => a.email === userEmail)?.label ?? null;
 
@@ -65,7 +66,7 @@ export default function ProfileScreen() {
       setUserEmail(user.email ?? null);
 
       const [profileRes, itemsRes] = await Promise.all([
-        supabase.from('profiles').select('full_name, city, lender_score, renter_score, avatar_url').eq('id', user.id).single(),
+        supabase.from('profiles').select('full_name, city, lender_score, renter_score, avatar_url, is_admin').eq('id', user.id).single(),
         supabase.from('items')
           .select('id, owner_id, title, description, daily_price, sale_price, category, city, photos')
           .eq('owner_id', user.id)
@@ -80,6 +81,7 @@ export default function ProfileScreen() {
         setLenderScore((profileRes.data as any).lender_score ?? null);
         setRenterScore((profileRes.data as any).renter_score ?? null);
         setAvatarUrl((profileRes.data as any).avatar_url ?? null);
+        setIsAdmin((profileRes.data as any).is_admin ?? false);
       }
       if (itemsRes.data) setItems(itemsRes.data as Item[]);
       setLoading(false);
@@ -305,6 +307,7 @@ export default function ProfileScreen() {
               { Icon: ClipboardList, label: 'My Rentals', onPress: () => { setMenuOpen(false); navigation.navigate('MyRentals'); } },
               { Icon: Heart,         label: 'Wishlist',   onPress: () => { setMenuOpen(false); navigation.navigate('Wishlist'); } },
               { Icon: Clock,         label: 'History',    onPress: () => { setMenuOpen(false); navigation.navigate('History'); } },
+              ...(isAdmin ? [{ Icon: ShieldCheck, label: 'Admin Console', onPress: () => { setMenuOpen(false); navigation.navigate('AdminHome'); } }] : []),
               { Icon: Repeat,        label: 'Switch User', onPress: () => { setMenuOpen(false); setSwitchModal(true); } },
             ].map(({ Icon, label, onPress }) => (
               <TouchableOpacity key={label} style={styles.sheetRow} onPress={onPress}>

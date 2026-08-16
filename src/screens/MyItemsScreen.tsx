@@ -33,6 +33,7 @@ type ItemRow = {
   photos: string[] | null;
   pickup_location: string | null;
   verification_status: string;
+  rejection_reason: string | null;
   is_hidden: boolean;
   is_sold: boolean;
   bookings: Booking[];
@@ -65,7 +66,7 @@ export default function MyItemsScreen({ navigation }: Props) {
     const [itemsRes, txRes, soldRes] = await Promise.all([
       supabase
         .from('items')
-        .select('id, owner_id, title, category, description, daily_price, sale_price, city, photos, pickup_location, verification_status, is_hidden')
+        .select('id, owner_id, title, category, description, daily_price, sale_price, city, photos, pickup_location, verification_status, rejection_reason, is_hidden')
         .eq('owner_id', user.id)
         .order('created_at', { ascending: false }),
       supabase
@@ -176,6 +177,17 @@ export default function MyItemsScreen({ navigation }: Props) {
                   <Text style={styles.cardChevron}>›</Text>
                 </TouchableOpacity>
 
+                {item.verification_status === 'pending' && (
+                  <View style={styles.statusBanner}>
+                    <Text style={styles.statusBannerText}>⏳ Awaiting verification — not visible in the feed yet</Text>
+                  </View>
+                )}
+                {item.verification_status === 'draft' && item.rejection_reason && (
+                  <View style={[styles.statusBanner, styles.statusBannerRejected]}>
+                    <Text style={styles.statusBannerRejectedText}>❌ Rejected: {item.rejection_reason}</Text>
+                  </View>
+                )}
+
                 {/* Action row */}
                 <View style={styles.actionRow}>
                   <TouchableOpacity
@@ -262,6 +274,13 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   actionBtnText: { color: colors.textSecondary, fontSize: 12, fontWeight: '500' },
   actionBtnSold: { backgroundColor: 'rgba(34,197,94,0.12)', borderColor: 'rgba(34,197,94,0.3)' },
   actionBtnSoldText: { color: '#15803d', fontSize: 12, fontWeight: '700' },
+  statusBanner: {
+    marginHorizontal: 12, marginTop: 8, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
+    backgroundColor: 'rgba(245,158,11,0.12)',
+  },
+  statusBannerText: { fontSize: 12, color: '#b45309', fontWeight: '600' },
+  statusBannerRejected: { backgroundColor: 'rgba(239,68,68,0.12)' },
+  statusBannerRejectedText: { fontSize: 12, color: '#b91c1c', fontWeight: '600' },
 
   bookingsSection: { gap: 8, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 },
   bookingsSectionTitle: { fontSize: 11, color: colors.textFaint, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },

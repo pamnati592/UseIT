@@ -1,5 +1,28 @@
 # Next Suggested Step — For Nati 👋
 
+## ✅ Backlog U — admin console shipped (2026-08-16)
+The last item on the pre-agreed list. Spec section 2 defines an Admin user type and 5.2 requires RBAC — nothing existed before this.
+
+**Design choice worth knowing:** rather than adding blanket "admin can read/write everything" RLS policies across `transactions`/`items`/`profiles`/`disputes`, this follows the pattern already dominant throughout the project — `SECURITY DEFINER` RPCs that check a new `is_admin()` helper internally. Same end result (an admin can act across all rows), but each capability is a named, auditable function scoped to exactly what the console needs, not a standing RLS grant that could be forgotten about and quietly widen later. `profiles: read all` was already permissive, so no RLS changes were needed anywhere.
+
+**Schema:** `profiles.is_admin`, `profiles.is_banned`, `items.rejection_reason` (no `rejected` value exists on `item_status` — reuses `draft` so the item stays in the owner's list as editable, with the reason column telling them why).
+
+**Dispute queue** (`AdminDisputesScreen`) — lists every `disputed` transaction with its evidence (photo + description, now collected on all three report-issue paths from earlier this session). Resolving in favor of the renter sets the transaction to `cancelled` (reusing the exact precondition `refund-payment` already enforces) and the client then calls that same edge function with a new reason `admin_dispute_resolved` for a 100% refund; favoring the lender sets it to `completed` — they keep the already-captured payment, nothing to refund. `refund-payment` (now v3) checks `profiles.is_admin` for this reason specifically.
+
+**Item moderation** (`AdminItemsScreen`) — lists `pending` items with the verification photo, approve sets `live`, reject requires a reason (min 5 chars) and sets `draft` + `rejection_reason`. `MyItemsScreen` now shows a banner for pending ("awaiting verification") and rejected ("❌ Rejected: {reason}") items — previously `verification_status` was fetched but never actually shown anywhere in that screen.
+
+**User management** (`AdminUsersScreen`) — search by name, ban/unban. Banned users are signed out and blocked at `RootNavigator` (checked before phone-verification/onboarding too) with an "Account Suspended" screen — **not instant**: `RootNavigator` only reads `is_banned` on auth state change, not via a realtime listener, so a user already mid-session won't be kicked out until their next sign-in. Acceptable for MVP scope, worth knowing.
+
+**Explicitly out of scope, flagged not silently skipped:**
+- "Block or Report another user" (spec 4.11) — confirmed no `reports` table exists and nothing persists a report today. This needs a client-facing report button too, not just an admin view — a real separate feature, not folded into U.
+- `verification_image_url` is uploaded to the **public** `item-images` bucket via `getPublicUrl` — spec 4.7 says this photo should be admin-only. Pre-existing gap, not introduced or fixed here.
+
+**Access:** Ori's account (`131ab58f...`) set `is_admin = true` for testing. Reachable via Profile → hamburger menu → "Admin Console" (only rendered when `is_admin` is true).
+
+**Verified at the DB level** (not yet on a real device): `is_admin()` correctly gates every RPC; `admin_approve_item`/`admin_reject_item` run end-to-end (real test: "Yoga matt" → `live`, "Ohel" → `draft` with a rejection reason, both still in that state — genuine results, not reverted); `admin_list_disputes`' multi-table join returns correct data (item title, both party names, evidence) on a synthetic dispute, cleaned up after; `admin_resolve_dispute` favor-lender path correctly sets `completed` and marks the dispute resolved with the note, also cleaned up after; `admin_set_user_banned` verified both directions. The favor-renter refund path reuses `refund-payment`'s already-proven Stripe logic — not re-tested with a fresh charge, since doing so would need a real card entry on a device.
+
+**Not yet tested on a real device.** Worth a dedicated pass: open the Admin Console as Ori, moderate a real newly-submitted item, and — if a real dispute exists or one is manufactured for testing — resolve it in both directions and confirm the refund actually lands for the favor-renter case.
+
 ## ✅ Backlog E — weighted feed ranking (2026-08-16)
 `get_feed` ranked by distance only. Extended into a weighted score exactly matching the backlog's factors: **distance 50%, lender score (from N) 25%, interest match 15%, recency 10%.** The radius filter's behavior is unchanged — still a hard cutoff on which items appear; this only reorders within that set. `auth.uid()` internally, no new client-facing parameter, no client changes needed (same RPC signature).
 - Distance scores relative to the *selected* radius (linear falloff) when one's chosen, a gentler decay when it's "All", neutral when there's no location signal at all — not a fixed constant either way.
@@ -256,20 +279,20 @@ When you build the QR flow, wire any status change (item handed over, item retur
 - Likely shares the same vision-model call as Q (same prompt style, single-item case just uses the first/only detected object) — worth designing them together so the extraction logic isn't duplicated.
 - SAS rule: still saves through the same existing "Save" path in `AddItemScreen` — AI only pre-fills form fields, it doesn't introduce a second save/write path.
 
-### U. Admin role — dispute queue & moderation console
-- Requested 2026-08-09. Spec section 2 already defines an **Admin** user type ("content management, bans, verification approval, dispute resolution") and 5.2 requires RBAC, but nothing of it exists in the app today.
-- Needed pieces:
-  - **Role storage** — an `is_admin` / `role` column on `profiles`, plus RLS policies that let admins read across all rows. Every current policy is scoped to `auth.uid()` being a party, so an admin currently cannot see anyone else's data.
-  - **Dispute queue** — list every transaction with `status = 'disputed'`, with the evidence now collected on all three report-issue paths (photo + description via `disputes`), and actions to resolve in favour of either party (which must drive the escrow release described in spec 4.10).
-  - **User management** — ban / unban, view a user's rentals and scores, act on reports (spec 4.11 has "Block or Report another user" — check whether reports are even persisted anywhere today).
-  - **Item moderation** — items are created as `Pending` per spec 4.7 and need manual/AI verification; there is currently no screen where an admin approves them, and `verification_image_url` (admin-only per spec) has no viewer.
-- Open question: separate admin app/screen inside the same build, gated by role, or a web dashboard? A gated screen in-app is far cheaper for the project timeline.
-
 ### V. Gate QR handoff to the rental dates
 - Requested 2026-08-09, explicitly **not now** — the current always-available behaviour is wanted for testing.
 - In the final version, "Show Pickup QR" / "Scan to Receive" should only be reachable on the rental **start date** (and the return QR on/after the end date), rather than as soon as the transaction is `paid`.
 - Enforce server-side in `ensure_qr_token` / `scan_qr_handoff` (date check against `start_date` / `end_date`), not just by hiding the button — hiding alone is bypassable and violates the pattern used elsewhere, where the RPC is the authority.
 - Decide the grace window: exactly the start date, or from the evening before? Late returns also need a rule — the return QR presumably must stay available after `end_date`, not expire on it.
+
+### AA. Block/Report user is not persisted anywhere ⚠️
+- Found while building U (2026-08-16). Spec 4.11 says "User can Block or Report another user," but there is no `reports` table and no client-facing report/block button anywhere in the app — confirmed by checking `information_schema.tables`.
+- Needs: a `reports` table (reporter, reported user, reason, optional evidence, status), a client-facing "Report User" action (likely from `PublicProfileScreen`, matching where lender/renter scores already show), and an admin queue to act on them (extends `AdminUsersScreen` or a new tab there).
+- Separate from `admin_set_user_banned` (built as part of U) — that's the enforcement action; this is the missing intake mechanism that would normally feed it.
+
+### AB. Verification photo lives in the public storage bucket
+- Found while building U (2026-08-16). `AddItemScreen` uploads `verification_image_url` to the **public** `item-images` bucket via `getPublicUrl` — spec 4.7 says this photo should be admin-only. It isn't currently linked/exposed anywhere in the app's UI, but the URL itself isn't access-controlled if someone had it.
+- Real fix: move verification photos to the private `handoff-evidence`-style bucket pattern (or a new private bucket), switch to `signedUrlFor` at display time (the admin console's item-moderation screen already expects a directly-usable URL — would need updating once this moves), and write a migration plan for the small number of already-uploaded verification photos.
 
 ### Y. Proximity check — GPS accuracy (root cause found & fixed 2026-08-11)
 - **Root cause:** `getCurrentLocationOnce` requested `Location.Accuracy.Balanced`, which expo-location documents as *"accurate to within one hundred meters"* — Wi-Fi/network derived, not a real GPS fix. The proximity threshold is **50m**, so the error budget was **double the limit being enforced**. Two phones touching each other could read anywhere from 0m to 150m apart. The ~19m measured on 2026-08-09 was luck, and on 2026-08-11 the same two phones side by side failed the check outright.
