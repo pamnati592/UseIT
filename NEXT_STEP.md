@@ -1,5 +1,14 @@
 # Next Suggested Step — For Nati 👋
 
+## ✅ Backlog O — Chats tab split by role (2026-08-16)
+`ChatsScreen` now has two sub-tabs, **Renting** and **Lending**, matching the backlog spec exactly: a conversation is Renting if `conversations.renter_id = auth.uid()`, Lending if `conversations.lender_id = auth.uid()` (no join needed — `lender_id` already mirrors `items.owner_id` at conversation-creation time, same field `ChatRoomScreen` already keys `isLender` off). Each sub-tab shows its own unread count as a badge on the tab pill; the bottom tab bar's overall unread badge is untouched since `useUnreadCount` was already role-agnostic (sums both `renter_id` and `lender_id` conversations). Per-tab empty states differ ("No rentals yet" vs "No listings rented out yet"). `ChatRoomScreen` itself wasn't touched — only the list leading into it was split (SAS). **Not yet tested on a real device.**
+
+## ✅ Meeting Point test data (2026-08-16)
+Set `pickup_location = 'Dizengoff Center, Tel Aviv-Yafo'` on **PlayStation 5 + 2 Controllers** (`53c77124...`, owned by Ori) purely so there's a live `paid` rental (Sep 16–19, Nati renting) to test the Meeting Point screen against. Not real listing data.
+
+## ✅ Provisioning profile expiry — fixed manually this session (2026-08-16)
+`npx expo run:ios --device` failed with "No profiles for 'com.swipeandrentapp' were found" — the expected 7-day free-account signature expiry. Fixed by running `xcodebuild ... -allowProvisioningUpdates` directly (Xcode minted a fresh profile non-interactively) and installing via `xcrun devicectl device install app`. One step still needed **manual, on-device action**: iOS refused to launch the freshly-signed app until the developer certificate was trusted at **Settings → General → VPN & Device Management → Trust**. That trust step can't be automated — it needs a human tapping the device.
+
 ## ✅ Dispute photo made optional (2026-08-13)
 User feedback: the dispute Submit button required both a photo *and* a description before it would enable. Not every dispute is about a damaged item (no-show, wrong item, payment issue, etc.), so requiring a photo for all of them was wrong. Now only the description is required to submit — the photo picker stays, with copy nudging the user to add one specifically when something is damaged, but it no longer blocks submission. `confirmDispute()` already handled a null photo gracefully (uploads only `if (disputePhotoAsset?.base64)`), so this was a UI-gating-only change.
 

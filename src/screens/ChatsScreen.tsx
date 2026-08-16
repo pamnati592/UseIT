@@ -9,7 +9,9 @@ import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
 import { supabase } from '../services/supabase';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
-import { MessageCircle, Package } from 'lucide-react-native';
+import { MessageCircle, Package, Key } from 'lucide-react-native';
+
+type RoleTab = 'renting' | 'lending';
 
 type ConversationRow = {
   id: string;
@@ -34,6 +36,7 @@ export default function ChatsScreen({ navigation }: Props) {
   const [conversations, setConversations] = useState<ConversationRow[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [roleTab, setRoleTab] = useState<RoleTab>('renting');
 
   useFocusEffect(
     useCallback(() => {
@@ -91,6 +94,22 @@ export default function ChatsScreen({ navigation }: Props) {
     return new Date(conv.last_message_at) > new Date(myLastRead);
   }
 
+  // A conversation belongs to Renting if the current user is the renter, and to
+  // Lending if they're the item owner — conversations.lender_id already tracks
+  // that (set to items.owner_id when the conversation is created), so no join
+  // needed. ChatRoomScreen itself is unchanged; only this list is split (SAS).
+  const rentingConvs = useMemo(
+    () => conversations.filter(c => c.renter_id === currentUserId),
+    [conversations, currentUserId]
+  );
+  const lendingConvs = useMemo(
+    () => conversations.filter(c => c.lender_id === currentUserId),
+    [conversations, currentUserId]
+  );
+  const rentingUnreadCount = useMemo(() => rentingConvs.filter(isUnread).length, [rentingConvs, currentUserId]);
+  const lendingUnreadCount = useMemo(() => lendingConvs.filter(isUnread).length, [lendingConvs, currentUserId]);
+  const visibleConvs = roleTab === 'renting' ? rentingConvs : lendingConvs;
+
   function formatTime(iso: string | null): string {
     if (!iso) return '';
     const d = new Date(iso);
@@ -113,15 +132,52 @@ export default function ChatsScreen({ navigation }: Props) {
     <SafeAreaView style={styles.container}>
       <Text style={styles.header}>Chats</Text>
 
-      {conversations.length === 0 ? (
+      <View style={styles.roleTabBar}>
+        <TouchableOpacity
+          style={[styles.roleTab, roleTab === 'renting' && styles.roleTabActive]}
+          onPress={() => setRoleTab('renting')}
+        >
+          <View style={styles.roleTabInner}>
+            <Key size={15} color={roleTab === 'renting' ? colors.text : colors.textMuted} />
+            <Text style={[styles.roleTabText, roleTab === 'renting' && styles.roleTabTextActive]}>Renting</Text>
+            {rentingUnreadCount > 0 && (
+              <View style={styles.roleTabBadge}>
+                <Text style={styles.roleTabBadgeText}>{rentingUnreadCount}</Text>
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.roleTab, roleTab === 'lending' && styles.roleTabActive]}
+          onPress={() => setRoleTab('lending')}
+        >
+          <View style={styles.roleTabInner}>
+            <Package size={15} color={roleTab === 'lending' ? colors.text : colors.textMuted} />
+            <Text style={[styles.roleTabText, roleTab === 'lending' && styles.roleTabTextActive]}>Lending</Text>
+            {lendingUnreadCount > 0 && (
+              <View style={styles.roleTabBadge}>
+                <Text style={styles.roleTabBadgeText}>{lendingUnreadCount}</Text>
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {visibleConvs.length === 0 ? (
         <View style={styles.empty}>
           <MessageCircle size={48} color={colors.textFaint} strokeWidth={1.5} />
-          <Text style={styles.emptyTitle}>No conversations yet</Text>
-          <Text style={styles.emptySubtext}>Tap "Chat" on any item to start one</Text>
+          <Text style={styles.emptyTitle}>
+            {roleTab === 'renting' ? 'No rentals yet' : 'No listings rented out yet'}
+          </Text>
+          <Text style={styles.emptySubtext}>
+            {roleTab === 'renting'
+              ? 'Items you request to rent or buy will show up here'
+              : "Conversations about your own items will show up here"}
+          </Text>
         </View>
       ) : (
         <FlatList
-          data={conversations}
+          data={visibleConvs}
           keyExtractor={(c) => c.id}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           renderItem={({ item: conv }) => {
@@ -179,8 +235,22 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   header: {
     fontSize: 24, fontWeight: 'bold', color: colors.text,
     paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: colors.border,
   },
+  roleTabBar: {
+    flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border,
+    backgroundColor: colors.bg,
+  },
+  roleTab: { flex: 1, paddingVertical: 12, alignItems: 'center' },
+  roleTabActive: { borderBottomWidth: 2, borderBottomColor: colors.btn },
+  roleTabInner: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  roleTabText: { fontSize: 14, color: colors.textFaint, fontWeight: '500' },
+  roleTabTextActive: { color: colors.text, fontWeight: '600' },
+  roleTabBadge: {
+    backgroundColor: colors.warning, borderRadius: 10,
+    minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  roleTabBadgeText: { color: colors.btnText, fontSize: 10, fontWeight: '800' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, paddingBottom: 60 },
   emptyIcon: { fontSize: 48 },
   emptyTitle: { fontSize: 18, fontWeight: '600', color: colors.text },
