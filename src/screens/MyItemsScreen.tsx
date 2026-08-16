@@ -34,6 +34,7 @@ type ItemRow = {
   pickup_location: string | null;
   verification_status: string;
   is_hidden: boolean;
+  is_sold: boolean;
   bookings: Booking[];
 };
 
@@ -61,7 +62,7 @@ export default function MyItemsScreen({ navigation }: Props) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setLoading(false); return; }
 
-    const [itemsRes, txRes] = await Promise.all([
+    const [itemsRes, txRes, soldRes] = await Promise.all([
       supabase
         .from('items')
         .select('id, owner_id, title, category, description, daily_price, sale_price, city, photos, pickup_location, verification_status, is_hidden')
@@ -73,6 +74,14 @@ export default function MyItemsScreen({ navigation }: Props) {
         .eq('lender_id', user.id)
         .in('status', ['pending', 'approved', 'active'])
         .order('start_date', { ascending: true }),
+      // Distinguishes "manually hidden" from "auto-hidden because it sold" — a
+      // seller could otherwise tap Show on a sold item and accidentally
+      // re-list something that's already gone.
+      supabase
+        .from('purchases')
+        .select('item_id')
+        .eq('seller_id', user.id)
+        .eq('status', 'paid'),
     ]);
 
     if (!itemsRes.data) { setLoading(false); return; }
@@ -90,6 +99,8 @@ export default function MyItemsScreen({ navigation }: Props) {
       });
     });
 
+    const soldItemIds = new Set((soldRes.data ?? []).map((p: any) => p.item_id));
+
     setItems(
       (itemsRes.data as any[]).map(item => ({
         ...item,
@@ -98,6 +109,7 @@ export default function MyItemsScreen({ navigation }: Props) {
         city: item.city ?? null,
         photos: item.photos ?? null,
         is_hidden: item.is_hidden ?? false,
+        is_sold: soldItemIds.has(item.id),
         bookings: txByItem[item.id] ?? [],
       }))
     );
@@ -180,15 +192,24 @@ export default function MyItemsScreen({ navigation }: Props) {
                     <Pencil size={14} color={colors.textSecondary} />
                     <Text style={styles.actionBtnText}>Edit</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.actionBtn, item.is_hidden && styles.actionBtnActive]}
-                    onPress={() => toggleHidden(item)}
-                  >
-                    {item.is_hidden
-                      ? <Eye size={14} color={colors.textSecondary} />
-                      : <EyeOff size={14} color={colors.textSecondary} />}
-                    <Text style={styles.actionBtnText}>{item.is_hidden ? 'Show' : 'Hide'}</Text>
-                  </TouchableOpacity>
+                  {item.is_sold ? (
+                    // Sold is a terminal state, not a toggle — there is nothing to
+                    // show/hide back to. A plain non-interactive pill instead of a
+                    // Hide/Show button so it can't be tapped back into the feed.
+                    <View style={[styles.actionBtn, styles.actionBtnSold]}>
+                      <Text style={styles.actionBtnSoldText}>Sold</Text>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.actionBtn, item.is_hidden && styles.actionBtnActive]}
+                      onPress={() => toggleHidden(item)}
+                    >
+                      {item.is_hidden
+                        ? <Eye size={14} color={colors.textSecondary} />
+                        : <EyeOff size={14} color={colors.textSecondary} />}
+                      <Text style={styles.actionBtnText}>{item.is_hidden ? 'Show' : 'Hide'}</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
 
               </View>
@@ -239,6 +260,8 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   actionBtnActive: { borderColor: colors.primary, backgroundColor: colors.infoBg },
   actionBtnText: { color: colors.textSecondary, fontSize: 12, fontWeight: '500' },
+  actionBtnSold: { backgroundColor: 'rgba(34,197,94,0.12)', borderColor: 'rgba(34,197,94,0.3)' },
+  actionBtnSoldText: { color: '#15803d', fontSize: 12, fontWeight: '700' },
 
   bookingsSection: { gap: 8, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 },
   bookingsSectionTitle: { fontSize: 11, color: colors.textFaint, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },

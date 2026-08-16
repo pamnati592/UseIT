@@ -1,5 +1,8 @@
 # Next Suggested Step — For Nati 👋
 
+## ✅ Backlog K — History screen implemented (2026-08-16)
+Was a pure "Coming soon" placeholder. Now: **Renting**/**Lending** role tabs (same pattern as the Chats split from earlier this session) — Renting shows past `transactions` where I'm the renter, Lending merges past `transactions` where I'm the lender with sold `purchases` (`seller_id = auth.uid() and status = 'paid'`), sorted together by date. Only `completed`/`cancelled`/`disputed` statuses show, per spec — a rejected-before-payment request never became a real rental. Also fixed the "known gap" the backlog bundled in: `MyItemsScreen`'s Hide/Show toggle couldn't tell "manually hidden" apart from "auto-hidden because it sold," so a seller could accidentally tap Show and re-list something already gone. Sold items now render a non-interactive "Sold" pill instead of the toggle — nothing to tap back into the feed. **Not yet tested on a real device.**
+
 ## ✅ Backlog X, W, I closed in one sweep (2026-08-16)
 User asked to knock down as many backlog items as possible before tackling U. Cleared out the small/mechanical ones:
 
@@ -230,13 +233,6 @@ When you build the QR flow, wire any status change (item handed over, item retur
 ### E. Feed ranking algorithm (beyond distance)
 - Current `get_feed` ranks by distance only. Extend the weighted formula with: lender score, interest match (intersect `profiles.interests` with `items.category`/tags), recency.
 - Likely a new `p_user_id` parameter or just use `auth.uid()` internally as it already does for the owner filter.
-
-### K. History screen
-- `HistoryScreen` placeholder exists — needs full implementation
-- Show all past completed/cancelled/disputed rentals for both sides (as renter and as lender)
-- Group by role or chronological order TBD
-- **Must also show sold items (2026-07-16)**: when a purchase completes (`mark_purchase_paid` RPC), the item is set `is_hidden = true` and dropped from the feed — per user request, "sold" is deliberately **not** shown publicly, only to the seller, and History is where that should surface (join `purchases` where `seller_id = auth.uid() and status = 'paid'`).
-- **Known gap to fix alongside this**: `MyItemsScreen`'s Hide/Show toggle (`toggleHidden`) is a plain generic switch — it can't currently tell "manually hidden" apart from "auto-hidden because it sold." A seller could tap "Show" on a sold item and accidentally re-list something that's already gone. Fix once History (or a `purchases` check) can distinguish the two.
 
 ### Q. Bulk photo scan — auto-fill multiple items from one photo
 - In `AddItemScreen`, add a "Scan Items" button (camera icon) above the manual form.
