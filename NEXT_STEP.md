@@ -1,5 +1,15 @@
 # Next Suggested Step — For Nati 👋
 
+## ✅ Backlog N — retroactive reputation scoring (2026-08-16)
+Replaced the plain `avg(rating.score)` with a weighted-recency blend of ratings + behavioral signals, as proposed and confirmed before building (this feeds the live Trust Score / fee-discount system per spec 4.12, so it wasn't guessed at silently):
+- `recompute_lender_score`/`recompute_renter_score`: 70% weighted-recency rating average (half-life ~180 days) + 30% behavioral score. Lender behavior = response time to requests + inverse cancellation rate. Renter behavior = on-time return + no-disputes + inverse cancellation rate. Before any rating exists, behavior alone stands in.
+- **Deliberately dropped "item condition accuracy"** as its own factor — no structured field captures that today (ratings are just a 1–5 score + free text); folded into the overall rating rather than invented from nothing. A real fix adds a dedicated question to the rating flow first.
+- `submit_rating` now calls the recompute functions instead of the old inline average — runs live on every rating insert, no cron job, per the backlog's own requirement.
+- New `profiles.lender_cancellations`, incremented by a trigger that fires only when the **lender** themselves cancels (`auth.uid() = lender_id` at update time) — correctly excludes the renter's `decline_at_pickup` path, which also flips status to `cancelled` but is renter-initiated. Deducts up to 1.0 from the lender score (`-0.1` per cancellation, capped).
+- **Retroactive bootstrap ran as part of the migration** — every profile with rental history was recomputed immediately (verified: Ori 4.22/4.47, Nati 3.78/4.03 lender/renter, both sensible and differentiated), not just left to drift toward the new formula as new ratings trickle in.
+- `PublicProfileScreen`: added review counts under each score badge (didn't exist before, despite the backlog saying "already shown") and a warning badge once `lender_cancellations` hits a threshold (**3, a first guess — worth revisiting with real usage data**). `ProfileScreen` (own profile) needed no changes — it already reads the same `lender_score`/`renter_score` columns.
+- **Not yet tested on a real device.**
+
 ## ✅ Backlog K — History screen implemented (2026-08-16)
 Was a pure "Coming soon" placeholder. Now: **Renting**/**Lending** role tabs (same pattern as the Chats split from earlier this session) — Renting shows past `transactions` where I'm the renter, Lending merges past `transactions` where I'm the lender with sold `purchases` (`seller_id = auth.uid() and status = 'paid'`), sorted together by date. Only `completed`/`cancelled`/`disputed` statuses show, per spec — a rejected-before-payment request never became a real rental. Also fixed the "known gap" the backlog bundled in: `MyItemsScreen`'s Hide/Show toggle couldn't tell "manually hidden" apart from "auto-hidden because it sold," so a seller could accidentally tap Show and re-list something already gone. Sold items now render a non-interactive "Sold" pill instead of the toggle — nothing to tap back into the feed. **Not yet tested on a real device.**
 
@@ -221,14 +231,6 @@ When you build the QR flow, wire any status change (item handed over, item retur
 - User confirmed (2026-07-14): they want a genuine formula eventually, not the hardcoded placeholder — but explicitly said not to build it now, just track it here.
 - Context: `QRDisplayScreen`/`QRScanScreen` currently show a hardcoded "Impact Score" (0–5 number + CO₂ stat) on the return-done screen — conflates the real Trust Score (now live via M's `lender_score`/`renter_score`) with an undefined environmental metric.
 - Discussed direction (not yet decided): short-term swap those screens to show the real trust score instead of the fake number (cheap, reuses M); a real CO2-based formula would need a category → emissions-avoided data table and is explicitly listed as Out of Scope for MVP in CLAUDE.md section 6 ("Impact Score — deferred to future version after market feedback") — worth a deliberate product decision before building.
-
-### N. Retroactive rental scoring (reputation bootstrap)
-- Both sides (lender and renter) have a history of past rentals. After each `completed` transaction, the system should look back at the full history for both parties and recompute their scores (weighted recency — more recent rentals count more).
-- For lenders: factors are item condition accuracy, response time to requests, cancellation rate.
-- For renters: factors are on-time return, item care (no disputes), cancellation rate.
-- This should run as a Supabase DB function / RPC triggered on every rating insert, so scores stay live without a separate cron job.
-- Display the score badge and total-review count on `PublicProfileScreen` (already shown, just needs real data).
-- `lender_cancellations` counter on `profiles` → deduct from lender score, show warning badge on public profile after threshold (not yet scoped anywhere else — fold in here).
 
 ### E. Feed ranking algorithm (beyond distance)
 - Current `get_feed` ranks by distance only. Extend the weighted formula with: lender score, interest match (intersect `profiles.interests` with `items.category`/tags), recency.

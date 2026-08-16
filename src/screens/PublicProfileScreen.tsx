@@ -11,7 +11,7 @@ import { supabase } from '../services/supabase';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
-import { ChevronLeft, ChevronRight, MapPin, Check, X } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, MapPin, Check, X, TriangleAlert } from 'lucide-react-native';
 
 type Props = NativeStackScreenProps<HomeStackParamList, 'PublicProfile'>;
 
@@ -41,13 +41,16 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
   const [city, setCity]             = useState<string | null>(null);
   const [lenderScore, setLenderScore] = useState<number | null>(null);
   const [renterScore, setRenterScore] = useState<number | null>(null);
+  const [lenderReviewCount, setLenderReviewCount] = useState(0);
+  const [renterReviewCount, setRenterReviewCount] = useState(0);
+  const [lenderCancellations, setLenderCancellations] = useState(0);
   const [avatarUrl, setAvatarUrl]   = useState<string | null>(null);
   const [loading, setLoading]       = useState(true);
 
   useEffect(() => {
     async function load() {
-      const [profileRes, itemsRes] = await Promise.all([
-        supabase.from('profiles').select('city, lender_score, renter_score, avatar_url').eq('id', userId).single(),
+      const [profileRes, itemsRes, ratingsRes] = await Promise.all([
+        supabase.from('profiles').select('city, lender_score, renter_score, lender_cancellations, avatar_url').eq('id', userId).single(),
         supabase
           .from('items')
           .select('id, owner_id, title, description, daily_price, sale_price, category, city, photos')
@@ -55,14 +58,24 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
           .eq('verification_status', 'live')
           .eq('is_hidden', false)
           .order('created_at', { ascending: false }),
+        // A rating's role (lender vs renter review) isn't stored directly —
+        // it's implicit in which side of the linked transaction the reviewee
+        // was on, same as the score-recompute functions key off.
+        supabase.from('ratings').select('transactions(lender_id, renter_id)').eq('reviewee_id', userId),
       ]);
       if (profileRes.data) {
         setCity((profileRes.data as any).city ?? null);
         setLenderScore((profileRes.data as any).lender_score ?? null);
         setRenterScore((profileRes.data as any).renter_score ?? null);
+        setLenderCancellations((profileRes.data as any).lender_cancellations ?? 0);
         setAvatarUrl((profileRes.data as any).avatar_url ?? null);
       }
       if (itemsRes.data) setItems(itemsRes.data as Item[]);
+      if (ratingsRes.data) {
+        const rows = ratingsRes.data as any[];
+        setLenderReviewCount(rows.filter(r => r.transactions?.lender_id === userId).length);
+        setRenterReviewCount(rows.filter(r => r.transactions?.renter_id === userId).length);
+      }
       setLoading(false);
     }
     load();
@@ -72,6 +85,10 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
     if (score === null || score === 0) return '—';
     return score.toFixed(1);
   }
+
+  // Threshold is a first pass, not a tuned figure — worth revisiting once
+  // there's real usage data on what a normal cancellation count looks like.
+  const LENDER_CANCELLATION_WARNING_THRESHOLD = 3;
 
   function renderItem({ item }: { item: Item }) {
     const cover = item.photos?.find(Boolean);
@@ -134,13 +151,28 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
               <View style={styles.scoreBadge}>
                 <Text style={styles.scoreValue}>{scoreLabel(lenderScore)}</Text>
                 <Text style={styles.scoreLabel}>Lender</Text>
+                <Text style={styles.reviewCount}>
+                  {lenderReviewCount} {lenderReviewCount === 1 ? 'review' : 'reviews'}
+                </Text>
               </View>
               <View style={styles.scoreDivider} />
               <View style={styles.scoreBadge}>
                 <Text style={styles.scoreValue}>{scoreLabel(renterScore)}</Text>
                 <Text style={styles.scoreLabel}>Renter</Text>
+                <Text style={styles.reviewCount}>
+                  {renterReviewCount} {renterReviewCount === 1 ? 'review' : 'reviews'}
+                </Text>
               </View>
             </View>
+
+            {lenderCancellations >= LENDER_CANCELLATION_WARNING_THRESHOLD && (
+              <View style={styles.cancellationWarning}>
+                <TriangleAlert size={14} color={colors.danger} />
+                <Text style={styles.cancellationWarningText}>
+                  This lender has cancelled {lenderCancellations} confirmed rentals
+                </Text>
+              </View>
+            )}
 
             {/* Pending rental request — decide directly from the profile */}
             {approveTransactionId && (
@@ -249,7 +281,14 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   scoreBadge: { flex: 1, alignItems: 'center', gap: 4 },
   scoreValue: { fontSize: 22, fontWeight: '700', color: colors.text },
   scoreLabel: { fontSize: 12, color: colors.textFaint, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 },
+  reviewCount: { fontSize: 11, color: colors.textFaint },
   scoreDivider: { width: 1, height: 36, backgroundColor: colors.card },
+  cancellationWarning: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'center',
+    backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 6, marginTop: 10,
+  },
+  cancellationWarningText: { fontSize: 12, color: colors.danger, fontWeight: '600' },
 
   sectionTitle: {
     fontSize: 11, fontWeight: '600', color: colors.textFaint,
