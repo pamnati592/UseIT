@@ -7,7 +7,7 @@ import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator'
 import { supabase } from '../services/supabase';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
-import { ChevronLeft, Clock, Package } from 'lucide-react-native';
+import { ChevronLeft, Clock, Package, ShieldCheck } from 'lucide-react-native';
 
 type Props = NativeStackScreenProps<ProfileStackParamList, 'AdminOverdue'>;
 
@@ -51,6 +51,19 @@ export default function AdminOverdueScreen({ navigation }: Props) {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  async function messageParty(transactionId: string, userId: string, label: string) {
+    try {
+      const { data: threadId, error } = await supabase.rpc('admin_ensure_support_thread', {
+        p_transaction_id: transactionId,
+        p_user_id: userId,
+      });
+      if (error) throw error;
+      navigation.navigate('SupportThread', { threadId: threadId as string, title: `${label} · Overdue Rental` });
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Could not open support chat.');
+    }
+  }
 
   function formatDate(iso: string): string {
     return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
@@ -125,6 +138,23 @@ export default function AdminOverdueScreen({ navigation }: Props) {
           Accrued daily late fee so far: <Text style={styles.accruedAmount}>₪{row.accrued_fee}</Text>
           <Text style={styles.accruedNote}> (charged automatically once returned)</Text>
         </Text>
+
+        <View style={styles.messageRow}>
+          <TouchableOpacity
+            style={styles.messageBtn}
+            onPress={() => messageParty(row.transaction_id, row.renter_id, row.renter_name)}
+          >
+            <ShieldCheck size={13} color={colors.primary} />
+            <Text style={styles.messageBtnText}>Message Renter</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.messageBtn}
+            onPress={() => messageParty(row.transaction_id, row.lender_id, row.lender_name)}
+          >
+            <ShieldCheck size={13} color={colors.primary} />
+            <Text style={styles.messageBtnText}>Message Lender</Text>
+          </TouchableOpacity>
+        </View>
 
         {isCliffEligible && (
           row.cliff_charged ? (
@@ -217,6 +247,12 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   lateBadgeTextCliff: { color: '#fff' },
   partiesRow: { flexDirection: 'row', gap: 16 },
   partyText: { fontSize: 12, color: colors.textSecondary },
+  messageRow: { flexDirection: 'row', gap: 10 },
+  messageBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    height: 36, borderRadius: 8, borderWidth: 1, borderColor: colors.primary,
+  },
+  messageBtnText: { color: colors.primary, fontSize: 12.5, fontWeight: '600' },
   accrued: { fontSize: 13, color: colors.text },
   accruedAmount: { fontWeight: '700' },
   accruedNote: { fontSize: 11, color: colors.textFaint },
