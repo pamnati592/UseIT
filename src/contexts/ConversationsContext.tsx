@@ -22,16 +22,41 @@ function computeIsUnread(conv: ConversationRow, userId: string | null): boolean 
   return new Date(conv.last_message_at) > new Date(myLastRead);
 }
 
+// Support threads (UseIT <-> one party, scoped to one rental) previously had
+// no notification signal at all — folding them into this same unread system
+// (requested 2026-08-17) means a message from UseIT now lights up the same
+// red/yellow badges as a real conversation, instead of requiring the user to
+// stumble into "Message UseIT About This" on the rental card to find out.
+export type SupportThreadRow = {
+  id: string;
+  transactionId: string;
+  itemTitle: string;
+  role: 'renter' | 'lender';
+  lastMessage: string | null;
+  lastMessageAt: string | null;
+  userLastReadAt: string | null;
+};
+
+function computeSupportUnread(thread: SupportThreadRow): boolean {
+  if (!thread.lastMessageAt) return false;
+  if (!thread.userLastReadAt) return true;
+  return new Date(thread.lastMessageAt) > new Date(thread.userLastReadAt);
+}
+
 type ConversationsContextValue = {
   conversations: ConversationRow[];
+  supportThreads: SupportThreadRow[];
   currentUserId: string | null;
   loading: boolean;
   rentingConversations: ConversationRow[];
   lendingConversations: ConversationRow[];
+  rentingSupportThreads: SupportThreadRow[];
+  lendingSupportThreads: SupportThreadRow[];
   rentingUnreadCount: number;
   lendingUnreadCount: number;
   totalUnreadCount: number;
   isUnread: (conv: ConversationRow) => boolean;
+  isSupportThreadUnread: (thread: SupportThreadRow) => boolean;
   reload: () => void;
 };
 
@@ -46,6 +71,7 @@ const ConversationsContext = createContext<ConversationsContextValue | null>(nul
 // listener mounted once at the app root (backlog P).
 export function ConversationsProvider({ children }: { children: ReactNode }) {
   const [conversations, setConversations] = useState<ConversationRow[]>([]);
+  const [supportThreads, setSupportThreads] = useState<SupportThreadRow[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const userIdRef = useRef<string | null>(null);
@@ -60,16 +86,25 @@ export function ConversationsProvider({ children }: { children: ReactNode }) {
       setCurrentUserId(userId);
     }
 
-    const { data, error } = await supabase
-      .from('conversations')
-      .select(`
-        id, renter_id, lender_id, last_message, last_message_at,
-        renter_last_read_at, lender_last_read_at,
-        items(title),
-        renter:profiles!conversations_renter_id_fkey(full_name),
-        lender:profiles!conversations_lender_id_fkey(full_name)
-      `)
-      .order('last_message_at', { ascending: false });
+    const [{ data, error }, { data: threadsData, error: threadsError }] = await Promise.all([
+      supabase
+        .from('conversations')
+        .select(`
+          id, renter_id, lender_id, last_message, last_message_at,
+          renter_last_read_at, lender_last_read_at,
+          items(title),
+          renter:profiles!conversations_renter_id_fkey(full_name),
+          lender:profiles!conversations_lender_id_fkey(full_name)
+        `)
+        .order('last_message_at', { ascending: false }),
+      supabase
+        .from('support_threads')
+        .select(`
+          id, transaction_id, last_message, last_message_at, user_last_read_at,
+          transactions!inner(renter_id, lender_id, items(title))
+        `)
+        .eq('user_id', userId),
+    ]);
 
     if (!error && data) {
       setConversations(
@@ -87,6 +122,19 @@ export function ConversationsProvider({ children }: { children: ReactNode }) {
         }))
       );
     }
+    if (!threadsError && threadsData) {
+      setSupportThreads(
+        (threadsData as any[]).map((t) => ({
+          id: t.id,
+          transactionId: t.transaction_id,
+          itemTitle: t.transactions?.items?.title ?? 'Item',
+          role: t.transactions?.renter_id === userId ? 'renter' as const : 'lender' as const,
+          lastMessage: t.last_message,
+          lastMessageAt: t.last_message_at,
+          userLastReadAt: t.user_last_read_at,
+        }))
+      );
+    }
     setLoading(false);
   }, []);
 
@@ -99,9 +147,14 @@ export function ConversationsProvider({ children }: { children: ReactNode }) {
     // conversations.last_message_at / *_last_read_at is the actual field every
     // unread computation reads — watching it directly is both more precise and
     // cheaper than the old approach of watching every messages INSERT app-wide.
+    // support_threads gets the same treatment now that it carries its own
+    // last_message_at/user_last_read_at (2026-08-17).
     const channel = supabase
       .channel(`conversations-watch-${Date.now()}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, () => {
+        if (mounted) load();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'support_threads' }, () => {
         if (mounted) load();
       })
       .subscribe();
@@ -121,25 +174,39 @@ export function ConversationsProvider({ children }: { children: ReactNode }) {
     () => conversations.filter(c => c.lender_id === currentUserId),
     [conversations, currentUserId]
   );
+  const rentingSupportThreads = useMemo(
+    () => supportThreads.filter(t => t.role === 'renter'),
+    [supportThreads]
+  );
+  const lendingSupportThreads = useMemo(
+    () => supportThreads.filter(t => t.role === 'lender'),
+    [supportThreads]
+  );
   const rentingUnreadCount = useMemo(
-    () => rentingConversations.filter(c => computeIsUnread(c, currentUserId)).length,
-    [rentingConversations, currentUserId]
+    () => rentingConversations.filter(c => computeIsUnread(c, currentUserId)).length
+      + rentingSupportThreads.filter(computeSupportUnread).length,
+    [rentingConversations, rentingSupportThreads, currentUserId]
   );
   const lendingUnreadCount = useMemo(
-    () => lendingConversations.filter(c => computeIsUnread(c, currentUserId)).length,
-    [lendingConversations, currentUserId]
+    () => lendingConversations.filter(c => computeIsUnread(c, currentUserId)).length
+      + lendingSupportThreads.filter(computeSupportUnread).length,
+    [lendingConversations, lendingSupportThreads, currentUserId]
   );
 
   const value: ConversationsContextValue = {
     conversations,
+    supportThreads,
     currentUserId,
     loading,
     rentingConversations,
     lendingConversations,
+    rentingSupportThreads,
+    lendingSupportThreads,
     rentingUnreadCount,
     lendingUnreadCount,
     totalUnreadCount: rentingUnreadCount + lendingUnreadCount,
     isUnread: (conv: ConversationRow) => computeIsUnread(conv, currentUserId),
+    isSupportThreadUnread: computeSupportUnread,
     reload: load,
   };
 

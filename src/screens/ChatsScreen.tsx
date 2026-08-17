@@ -6,12 +6,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
-import { useConversations, type ConversationRow } from '../contexts/ConversationsContext';
+import { useConversations, type ConversationRow, type SupportThreadRow } from '../contexts/ConversationsContext';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
-import { MessageCircle, Package, Key } from 'lucide-react-native';
+import { MessageCircle, Package, Key, ShieldCheck } from 'lucide-react-native';
 
 type RoleTab = 'renting' | 'lending';
+
+type FeedRow =
+  | { kind: 'conversation'; key: string; conv: ConversationRow }
+  | { kind: 'support'; key: string; thread: SupportThreadRow };
 
 type Props = {
   navigation: NativeStackNavigationProp<ChatsStackParamList, 'ConversationsList'>;
@@ -29,8 +33,9 @@ export default function ChatsScreen({ navigation }: Props) {
   const {
     currentUserId, loading,
     rentingConversations, lendingConversations,
+    rentingSupportThreads, lendingSupportThreads,
     rentingUnreadCount, lendingUnreadCount,
-    isUnread, reload,
+    isUnread, isSupportThreadUnread, reload,
   } = useConversations();
 
   // Safety net matching the one already used in ChatRoomScreen: catches
@@ -44,6 +49,23 @@ export default function ChatsScreen({ navigation }: Props) {
   }
 
   const visibleConvs = roleTab === 'renting' ? rentingConversations : lendingConversations;
+  const visibleThreads = roleTab === 'renting' ? rentingSupportThreads : lendingSupportThreads;
+
+  // Support threads are folded into the same list as real conversations,
+  // sorted by whichever actually had activity most recently — a UseIT reply
+  // competes for attention the same way a message from the other party does,
+  // rather than living in a separate, easy-to-forget place.
+  const feedRows: FeedRow[] = useMemo(() => {
+    const rows: FeedRow[] = [
+      ...visibleConvs.map((conv): FeedRow => ({ kind: 'conversation', key: `c-${conv.id}`, conv })),
+      ...visibleThreads.map((thread): FeedRow => ({ kind: 'support', key: `s-${thread.id}`, thread })),
+    ];
+    const activityOf = (row: FeedRow) => {
+      const iso = row.kind === 'conversation' ? row.conv.last_message_at : row.thread.lastMessageAt;
+      return iso ? new Date(iso).getTime() : 0;
+    };
+    return rows.sort((a, b) => activityOf(b) - activityOf(a));
+  }, [visibleConvs, visibleThreads]);
 
   function formatTime(iso: string | null): string {
     if (!iso) return '';
@@ -98,7 +120,7 @@ export default function ChatsScreen({ navigation }: Props) {
         </TouchableOpacity>
       </View>
 
-      {visibleConvs.length === 0 ? (
+      {feedRows.length === 0 ? (
         <View style={styles.empty}>
           <MessageCircle size={48} color={colors.textFaint} strokeWidth={1.5} />
           <Text style={styles.emptyTitle}>
@@ -112,10 +134,47 @@ export default function ChatsScreen({ navigation }: Props) {
         </View>
       ) : (
         <FlatList
-          data={visibleConvs}
-          keyExtractor={(c) => c.id}
+          data={feedRows}
+          keyExtractor={(row) => row.key}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
-          renderItem={({ item: conv }) => {
+          renderItem={({ item: row }) => {
+            if (row.kind === 'support') {
+              const thread = row.thread;
+              const unread = isSupportThreadUnread(thread);
+              return (
+                <TouchableOpacity
+                  style={styles.row}
+                  onPress={() => navigation.navigate('SupportThread', {
+                    threadId: thread.id,
+                    title: `UseIT · ${thread.itemTitle}`,
+                  })}
+                >
+                  <View style={[styles.avatar, styles.supportAvatar]}>
+                    <ShieldCheck size={22} color={colors.primary} />
+                    {unread && <View style={styles.avatarDot} />}
+                  </View>
+                  <View style={styles.rowContent}>
+                    <View style={styles.rowTop}>
+                      <Text style={[styles.userName, unread && styles.userNameUnread]} numberOfLines={1}>
+                        UseIT Support
+                      </Text>
+                      <Text style={[styles.time, unread && styles.timeUnread]}>
+                        {formatTime(thread.lastMessageAt)}
+                      </Text>
+                    </View>
+                    <View style={styles.itemTitleRow}>
+                      <Package size={12} color={colors.textMuted} />
+                      <Text style={styles.itemTitle} numberOfLines={1}>{thread.itemTitle}</Text>
+                    </View>
+                    <Text style={[styles.lastMessage, unread && styles.lastMessageUnread]} numberOfLines={1}>
+                      {thread.lastMessage ?? 'No messages yet'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            }
+
+            const conv = row.conv;
             const name = otherName(conv);
             const unread = isUnread(conv);
             return (
@@ -198,6 +257,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   avatarText: { fontSize: 20, color: colors.text, fontWeight: '600' },
+  supportAvatar: { backgroundColor: colors.infoBg, borderColor: colors.primary },
   avatarDot: {
     position: 'absolute', top: 0, right: 0,
     width: 14, height: 14, borderRadius: 7,

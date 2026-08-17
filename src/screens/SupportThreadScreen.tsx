@@ -1,19 +1,26 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
   KeyboardAvoidingView, Platform, ActivityIndicator, type ListRenderItemInfo,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { ChevronLeft, ArrowUp, ShieldCheck } from 'lucide-react-native';
 import { supabase } from '../services/supabase';
+import { chatBus } from '../services/chatBus';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 
 // Reachable from both ChatsStackNavigator (a party opening their own thread
-// from the rental card) and ProfileStackNavigator (admin opening a party's
-// thread from the dispute console) — same screen either way (SAS): the
-// underlying support_messages table doesn't distinguish "who's viewing",
-// RLS already scopes what each side can see.
+// from the rental card, or from its own row in the Chats list) and
+// ProfileStackNavigator (admin opening a party's thread from the dispute/
+// overdue console) — same screen either way (SAS). Only the thread's own
+// user_id gets a read receipt tracked (support_threads.user_last_read_at) —
+// the admin isn't a conversation participant with a read field, same
+// precedent as admin_resolve_dispute's system messages. That single field is
+// what feeds ConversationsContext's unread badge for this thread, so a real
+// notification actually reaches the user instead of requiring them to
+// stumble into "Message UseIT About This" on the rental card.
 type Props = {
   navigation: any;
   route: { params: { threadId: string; title: string } };
@@ -33,9 +40,20 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
   const [messages, setMessages] = useState<SupportMessage[]>([]);
   const [text, setText] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [threadUserId, setThreadUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const isFocused = useIsFocused();
+  const isFocusedRef = useRef(isFocused);
+  isFocusedRef.current = isFocused;
+  const isOwnerRef = useRef(false);
+
+  async function markRead() {
+    if (!isOwnerRef.current) return;
+    await supabase.from('support_threads').update({ user_last_read_at: new Date().toISOString() }).eq('id', threadId);
+    chatBus.notify();
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -43,16 +61,22 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
     async function init() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || !mounted) return;
-      setCurrentUserId(user.id);
+      const myId = user.id;
+      setCurrentUserId(myId);
 
-      const { data } = await supabase
-        .from('support_messages')
-        .select('id, sender_id, content, created_at')
-        .eq('thread_id', threadId)
-        .order('created_at', { ascending: false });
+      const [{ data: thread }, { data }] = await Promise.all([
+        supabase.from('support_threads').select('user_id').eq('id', threadId).single(),
+        supabase.from('support_messages').select('id, sender_id, content, created_at').eq('thread_id', threadId).order('created_at', { ascending: false }),
+      ]);
       if (!mounted) return;
+
+      if (thread) {
+        setThreadUserId(thread.user_id);
+        isOwnerRef.current = thread.user_id === user.id;
+      }
       setMessages((data as SupportMessage[]) ?? []);
       setLoading(false);
+      markRead();
 
       channelRef.current = supabase
         .channel(`support-thread:${threadId}:${Date.now()}`)
@@ -63,6 +87,10 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
             if (!mounted) return;
             const newMsg = payload.new as SupportMessage;
             setMessages((prev) => prev.some(m => m.id === newMsg.id) ? prev : [newMsg, ...prev]);
+            // A message arriving while this screen is already open and focused
+            // must not sit "unread" until the user leaves and comes back —
+            // same self-badge fix already applied to ChatRoomScreen.
+            if (isFocusedRef.current && newMsg.sender_id !== myId) markRead();
           }
         )
         .subscribe();
@@ -78,6 +106,11 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
     };
   }, [threadId]);
 
+  // Re-sync on refocus — this screen can stay mounted in the background when
+  // switching bottom tabs, so a message that arrived while unfocused must be
+  // marked read the moment the user actually comes back to look at it.
+  useFocusEffect(useCallback(() => { if (!loading) markRead(); }, [loading]));
+
   async function send() {
     const content = text.trim();
     if (!content || !currentUserId || sending) return;
@@ -90,6 +123,15 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
       .single();
     if (!error && data) {
       setMessages(prev => prev.some(m => m.id === (data as SupportMessage).id) ? prev : [data as SupportMessage, ...prev]);
+
+      const now = new Date().toISOString();
+      const isOwner = threadUserId === currentUserId;
+      await supabase.from('support_threads').update({
+        last_message: content,
+        last_message_at: now,
+        ...(isOwner ? { user_last_read_at: now } : {}),
+      }).eq('id', threadId);
+      chatBus.notify();
     }
     setSending(false);
   }

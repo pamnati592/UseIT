@@ -1,5 +1,14 @@
 # Next Suggested Step — For Nati 👋
 
+## ✅ Support threads now notify like real conversations (2026-08-17)
+User caught the gap live while testing: a user had no way to know UseIT messaged them unless they happened to open the exact rental's chat and tap "Message UseIT About This" — no badge, nothing in the Chats list. Raised as a design question ("nesting a UseIT chat inside a peer chat feels unintuitive") rather than just a bug — the fix folds support threads into the same unified unread system everything else already uses, instead of inventing a second notification path.
+
+- `support_threads` gained `last_message`/`last_message_at`/`user_last_read_at` (migration `20260817_support_threads_notifications.sql`) — same shape as `conversations`, simplified to one read field since only one side (the user) is a real participant; the admin isn't, same precedent as `admin_resolve_dispute`'s system messages.
+- `SupportThreadScreen.send()` now bumps those fields atomically alongside the message insert (mirrors `chatMessages.ts`'s pattern), and marks read on open/refocus/live-while-focused — reapplying the exact three-part fix from the earlier badge-race bug (atomic update, focus resync, live-focused read) so that bug can't quietly reappear here.
+- `ConversationsContext` now fetches `support_threads` alongside `conversations`, exposes `rentingSupportThreads`/`lendingSupportThreads`/`isSupportThreadUnread`, and folds their unread count into the same `rentingUnreadCount`/`lendingUnreadCount`/`totalUnreadCount` the bottom-tab and role-tab badges already read from — one realtime subscription covers both tables now.
+- `ChatsScreen` merges support threads into the same Renting/Lending list as real conversations, sorted by whichever had activity most recently, with a distinct shield-icon row ("UseIT Support" + the item title) so it can't be confused with the other party. The "Message UseIT About This" button on the rental card stays exactly as-is — just a shortcut into the same canonical screen (SAS), not a second entry point with different behavior.
+- **Verified at the DB level**, both directions: admin (Ori) inserting a message + updating `support_threads` as admin succeeds under RLS; the real renter (Nati) can then read the joined row (thread + transaction + item) exactly as `ConversationsContext` would, computes unread correctly, and marking it read as Nati clears it. Typecheck clean. **Not yet seen in the actual Chats list on a device.**
+
 ## ✅ UseIT support chat — per-rental 1:1 threads with admin (2026-08-16)
 User's own correction on the shape: **not** a 3-way room (renter+lender+admin) — two separate 1:1 threads per transaction, renter↔admin and lender↔admin, each party only ever sees their own conversation, scoped to that one rental.
 
