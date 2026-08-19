@@ -1,5 +1,24 @@
 # Next Suggested Step — For Nati 👋
 
+## 🎯 Goal changed (2026-08-19): this is heading to the App Store / Play Store, not a demo
+Ori's direction: stop building for "demo," build for **real public release** — real users downloading it, real feedback. This changes the bar on several things that were previously fine as demo shortcuts. Two immediate decisions from this conversation:
+
+- **RTL / Hebrew UI is explicitly OUT of scope now** — product-spec.pdf section 4.3 still says "Primary language: Hebrew, RTL layout on all screens," but that's superseded by this direct decision. Don't build it, don't flag it as a gap in future audits — English/LTR is the real target now.
+- Everything else the spec calls for still stands, but read it through a "real users, real money, real app-store review" lens, not "will this demo well."
+
+**Full gap analysis run this session** (grepped the actual codebase, not guessed) — real, confirmed-missing pieces for a genuine public launch:
+1. **No biometric auth (FaceID/TouchID)** anywhere in `src/` — spec 4.2 requires it for full access.
+2. **No Stripe Connect / payouts** — money flows renter → platform Stripe account and gets refunded on cancel/dispute, but nothing ever pays a lender their share. This is not optional for a real marketplace with real users; it's the core promise of the product.
+3. **Trust Score fee discount is computed but never applied** — shows on Profile, but no payment screen shows a fee breakdown and `create-payment-intent` charges the renter's full price with zero fee logic (spec 4.10/4.12).
+4. **No account deletion in-app** — Apple App Store guideline 5.1.1(v) is a hard rejection reason without this.
+5. **No Sign in with Apple** — Apple requires this specifically if any other third-party login (Google) is offered (guideline 4.8); currently only Google/Email exist.
+6. **No GDPR data export/deletion, no login rate-limiting** (spec 5.2).
+7. **`AddItemScreen`'s "Go Live (Testing Only)" button skips admin moderation entirely** — fine for dev, cannot ship to production; every listing must go through real review.
+8. **Currently building on a free Apple developer account** (per the two-device testing notes above — builds expire after 7 days, no push entitlement). App Store distribution requires a paid Apple Developer Program membership ($99/yr) and Google Play Developer account ($25 one-time) — **these are Ori's own accounts to create, not something buildable from here.**
+9. Backlog **AA** (block/report user not persisted) and **AB** (verification photo in a public bucket) both matter more now — spec-mandated user-safety features a real public app needs.
+
+**Not yet decided: what order to tackle these in.** Flagged, not started — waiting on Ori's prioritization.
+
 ## ✅ Backlog S started — AI auto-fill from the item's own photo (2026-08-19)
 Started, not the full backlog S scope — single-item auto-fill only (Q, the "one photo of a pile of objects → multiple detected items" bulk-scan feature, is still separate and not started).
 
