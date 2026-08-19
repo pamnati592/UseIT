@@ -1,5 +1,14 @@
 # Next Suggested Step — For Nati 👋
 
+## ✅ Dispute ruling gets the same status-pill + info-icon treatment (2026-08-19)
+Same request as the overdue-card simplification, extended to resolved disputes: "if I rule in someone's favor, can both parties see a summary of the ruling behind an ⓘ instead of it sitting on the card as a paragraph?"
+
+- New `RESOLVED_META` pill ("Resolved", purple) overrides the plain Completed/Cancelled pill on any transaction with a resolution in `disputeResolutions` — takes priority over the Late Return override too (a resolved dispute isn't simultaneously shown as overdue).
+- The ⓘ next to it opens `Alert.alert('Dispute Resolution', formatDisputeResolution(...))` — the exact same ruling text ("⚖️ UseIT ruled in favor of the renter/lender. {admin's note}") that used to sit permanently on the card, now behind a tap. Both parties see the same pill and the same tap-to-reveal text — nothing admin-only about it, RLS already scoped `disputeResolutions` to the transaction's own parties.
+- The old fallback "✅ completed"/"⚠️ cancelled — refund processed" line is now only shown when there's *no* resolution — once resolved, the pill + ⓘ carry that information instead, so it isn't said twice.
+
+Typecheck clean. **Not yet seen on device** — next: resolve the still-open PlayStation dispute from Admin Console (either direction, with a note) and confirm the card flips to the purple "Resolved" pill with the ruling behind the ⓘ.
+
 ## ✅ Overdue card simplified; Report Issue + Message UseIT merged into one flow (2026-08-19)
 Follow-up to the overdue-status work above, from live testing on a real overdue card: it looked "cluttered with details and colors" (a multi-line red paragraph, an amber charge line, both a "Report issue" link and a separate "Message UseIT" button). Two changes, both requested:
 

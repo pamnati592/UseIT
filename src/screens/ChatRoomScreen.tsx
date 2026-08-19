@@ -44,6 +44,13 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string }> 
 // a paragraph of colored text further down the card.
 const LATE_RETURN_META = { label: 'Late Return', color: '#b91c1c', bg: 'rgba(239,68,68,0.15)' };
 
+// Overrides Completed/Cancelled once UseIT has ruled on a dispute — same
+// "status pill + info icon" pattern as Late Return: the ruling and any note
+// live behind the ⓘ instead of as a permanent paragraph on the card, but the
+// pill itself still makes clear at a glance that this wasn't an ordinary
+// completion/cancellation.
+const RESOLVED_META = { label: 'Resolved', color: '#6d28d9', bg: 'rgba(109,40,217,0.15)' };
+
 // Same idea for purchase cards — mirrors the rental pending -> approved/rejected -> paid flow.
 const PURCHASE_STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
   pending:   { label: 'Pending',    color: '#b45309', bg: 'rgba(245,158,11,0.15)' },
@@ -1111,7 +1118,8 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       const msg = row.msg;
       const tx = row.tx;
       const isLateReturn = !!tx && tx.status === 'active' && lateDaysFor(tx) > 0;
-      const statusMeta = tx ? (isLateReturn ? LATE_RETURN_META : STATUS_META[tx.status]) : null;
+      const isResolved = !!tx && !!disputeResolutions[tx.id];
+      const statusMeta = tx ? (isResolved ? RESOLVED_META : isLateReturn ? LATE_RETURN_META : STATUS_META[tx.status]) : null;
       return (
         <View style={[styles.requestCard, msg.id === highlightedMessageId && styles.highlighted]}>
           <View style={styles.requestHeader}>
@@ -1123,7 +1131,12 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
             </View>
             {statusMeta && (
               <View style={styles.requestStatusRight}>
-                {isLateReturn && (
+                {isResolved && (
+                  <TouchableOpacity onPress={() => Alert.alert('Dispute Resolution', formatDisputeResolution(disputeResolutions[tx.id]))}>
+                    <Info size={16} color={colors.textMuted} />
+                  </TouchableOpacity>
+                )}
+                {!isResolved && isLateReturn && (
                   <TouchableOpacity onPress={() => Alert.alert('Late Return Policy', LATE_RETURN_POLICY_TEXT)}>
                     <Info size={16} color={colors.textMuted} />
                   </TouchableOpacity>
@@ -1292,9 +1305,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
               })()}
               {tx.status === 'completed' && (
                 <>
-                  {disputeResolutions[tx.id]
-                    ? <Text style={styles.helperText}>{formatDisputeResolution(disputeResolutions[tx.id])}</Text>
-                    : <Text style={styles.helperText}>✅ This rental has been completed.</Text>}
+                  {!disputeResolutions[tx.id] && <Text style={styles.helperText}>✅ This rental has been completed.</Text>}
                   {(adminCharges[tx.id] ?? []).map((c, i) => (
                     <Text key={i} style={c.status === 'succeeded' ? styles.helperText : styles.overdueText}>{chargeLabel(c)}</Text>
                   ))}
@@ -1306,10 +1317,8 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
               {tx.status === 'disputed' && (
                 <Text style={styles.helperText}>⚠️ This rental is under review by UseIT support.</Text>
               )}
-              {tx.status === 'cancelled' && (
-                disputeResolutions[tx.id]
-                  ? <Text style={styles.helperText}>{formatDisputeResolution(disputeResolutions[tx.id])}</Text>
-                  : <Text style={styles.helperText}>⚠️ This rental was cancelled — refund processed per policy.</Text>
+              {tx.status === 'cancelled' && !disputeResolutions[tx.id] && (
+                <Text style={styles.helperText}>⚠️ This rental was cancelled — refund processed per policy.</Text>
               )}
               {(
                 tx.status === 'paid'
