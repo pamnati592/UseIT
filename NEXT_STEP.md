@@ -1,5 +1,18 @@
 # Next Suggested Step — For Nati 👋
 
+## ✅ Overdue card simplified; Report Issue + Message UseIT merged into one flow (2026-08-19)
+Follow-up to the overdue-status work above, from live testing on a real overdue card: it looked "cluttered with details and colors" (a multi-line red paragraph, an amber charge line, both a "Report issue" link and a separate "Message UseIT" button). Two changes, both requested:
+
+**1. Status pill replaces the paragraph.** The `Active` pill now becomes a red **Late Return** pill once `end_date` has passed (`LATE_RETURN_META` override in `ChatRoomScreen`), with a small ⓘ next to it — tapping it shows the late-fee policy in an alert instead of it living permanently on the card. The old standalone "⏰ N days overdue" red paragraph is gone; the day count folds into the existing helper sentence ("Rental is active — 6 days overdue — scan Nati's QR..."). Charge confirmation lines (💰) are now styled as plain text, not a third color — only a *failed* charge still gets the red treatment, since that one actually needs the reader's attention.
+
+**2. "Report issue" and "Message UseIT About This" are now one entry point.** Turned out the existing dispute modal (`disputeModal`, step 1) already *was* almost exactly what was asked for — it already had a disclaimer step recommending direct resolution before escalating. Reused it instead of building a second modal:
+- Its primary button is renamed **"Message them directly" → "Back to Chat"** (exact wording requested).
+- A new middle option, **"Message UseIT"**, opens the per-rental support thread (reuses `handleMessageSupport` from the earlier support-chat work) — previously this only existed as a separate button elsewhere on the card.
+- The existing "Escalate to UseIT Arbitration →" text link is relabeled **"Report a Problem →"** and still leads into the same evidence-collection step 2, unchanged.
+- Every card that used to show either the old "Report issue" link (`paid`, `active`) or the old "Message UseIT About This" button (`disputed`, resolved-dispute, charged) now shows one **"Contact UseIT"** button that opens this same sheet — one button, one canonical decision point (SAS), instead of two separate entry points doing overlapping things.
+
+Typecheck clean. Two now-dead styles (`reportLink`/`reportLinkText`, `chargeText`) removed. **Not yet seen on device** — worth checking the Camping Tent overdue card and the disputed PlayStation card both render the new pill/button correctly.
+
 ## ✅ Rental card itself now shows overdue status + charges (2026-08-19)
 Found live while testing the overdue penalty: charging worked and posted a system message in Chat, but the Deal Board card — the actual "single live status board for that date range" per this app's own SAS rule — kept showing the plain "Rental is active, scan QR to complete" text, as if nothing had happened. A renter or lender opening that card had no way to see they were late or already charged without digging through chat history.
 

@@ -20,8 +20,11 @@ import { CategoryIcon } from '../components/CategoryIcon';
 import {
   Check, X, CreditCard, Clock, ChevronLeft, Package, Calendar, MessageCircle, ClipboardList, ArrowUp,
   ScanLine, QrCode, CircleCheck, TriangleAlert, MapPin, MessageSquare, Scale, UserRound, ShoppingCart, Camera,
-  ShieldCheck,
+  ShieldCheck, Info,
 } from 'lucide-react-native';
+
+const LATE_RETURN_POLICY_TEXT =
+  'A late fee equal to the item’s daily rate is charged automatically for every day it isn’t returned after the agreed end date. If it’s more than 14 days overdue, UseIT may also charge a separate one-time penalty based on the item’s value, decided case by case.';
 
 // Status label/color shown on the rental-request card's status pill — the card
 // itself is the single live status board for that date range (see requestCard).
@@ -35,6 +38,11 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string }> 
   disputed:  { label: 'Disputed',  color: '#b91c1c', bg: 'rgba(239,68,68,0.15)' },
   cancelled: { label: 'Cancelled', color: '#6b7280', bg: 'rgba(107,114,128,0.15)' },
 };
+
+// Overrides the plain "Active" pill once a rental's end_date has passed —
+// the status itself should say what's actually going on, not require reading
+// a paragraph of colored text further down the card.
+const LATE_RETURN_META = { label: 'Late Return', color: '#b91c1c', bg: 'rgba(239,68,68,0.15)' };
 
 // Same idea for purchase cards — mirrors the rental pending -> approved/rejected -> paid flow.
 const PURCHASE_STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
@@ -1102,7 +1110,8 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     {
       const msg = row.msg;
       const tx = row.tx;
-      const statusMeta = tx ? STATUS_META[tx.status] : null;
+      const isLateReturn = !!tx && tx.status === 'active' && lateDaysFor(tx) > 0;
+      const statusMeta = tx ? (isLateReturn ? LATE_RETURN_META : STATUS_META[tx.status]) : null;
       return (
         <View style={[styles.requestCard, msg.id === highlightedMessageId && styles.highlighted]}>
           <View style={styles.requestHeader}>
@@ -1113,8 +1122,15 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
               </Text>
             </View>
             {statusMeta && (
-              <View style={[styles.requestStatusPill, { backgroundColor: statusMeta.bg }]}>
-                <Text style={[styles.requestStatusPillText, { color: statusMeta.color }]}>{statusMeta.label}</Text>
+              <View style={styles.requestStatusRight}>
+                {isLateReturn && (
+                  <TouchableOpacity onPress={() => Alert.alert('Late Return Policy', LATE_RETURN_POLICY_TEXT)}>
+                    <Info size={16} color={colors.textMuted} />
+                  </TouchableOpacity>
+                )}
+                <View style={[styles.requestStatusPill, { backgroundColor: statusMeta.bg }]}>
+                  <Text style={[styles.requestStatusPillText, { color: statusMeta.color }]}>{statusMeta.label}</Text>
+                </View>
               </View>
             )}
           </View>
@@ -1247,9 +1263,6 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                         <Text style={styles.cancelRentalBtnText}>Decline Item</Text>
                       </TouchableOpacity>
                     )}
-                    <TouchableOpacity style={styles.reportLink} onPress={() => handleReportIssue(tx.id)}>
-                      <TriangleAlert size={14} color={colors.danger} /><Text style={styles.reportLinkText}>Report issue</Text>
-                    </TouchableOpacity>
                   </View>
                 </View>
               )}
@@ -1258,18 +1271,13 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                 const charges = adminCharges[tx.id] ?? [];
                 return (
                   <View style={styles.handoffBlock}>
-                    {lateDays > 0 && (
-                      <Text style={styles.overdueText}>
-                        ⏰ {lateDays} day{lateDays > 1 ? 's' : ''} overdue — a late fee is charged automatically once returned.
-                      </Text>
-                    )}
                     {charges.map((c, i) => (
-                      <Text key={i} style={c.status === 'succeeded' ? styles.chargeText : styles.overdueText}>{chargeLabel(c)}</Text>
+                      <Text key={i} style={c.status === 'succeeded' ? styles.helperText : styles.overdueText}>{chargeLabel(c)}</Text>
                     ))}
                     <Text style={styles.helperText}>
                       {isLender
-                        ? `Rental is active — scan ${otherUserName}'s QR when they return the item.`
-                        : `Rental is active — show this QR when you return the item.`}
+                        ? `Rental is active${lateDays > 0 ? ` — ${lateDays} day${lateDays > 1 ? 's' : ''} overdue` : ''} — scan ${otherUserName}'s QR when they return the item.`
+                        : `Rental is active${lateDays > 0 ? ` — ${lateDays} day${lateDays > 1 ? 's' : ''} overdue` : ''} — show this QR when you return the item.`}
                     </Text>
                     <TouchableOpacity
                       style={styles.qrActionBtn}
@@ -1278,9 +1286,6 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                       {isLender
                         ? <><ScanLine size={16} color={colors.btnText} /><Text style={styles.qrActionText}>Scan to Complete</Text></>
                         : <><QrCode size={16} color={colors.btnText} /><Text style={styles.qrActionText}>Show Return QR</Text></>}
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.reportLink} onPress={() => handleReportIssue(tx.id)}>
-                      <TriangleAlert size={14} color={colors.danger} /><Text style={styles.reportLinkText}>Report issue</Text>
                     </TouchableOpacity>
                   </View>
                 );
@@ -1291,7 +1296,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                     ? <Text style={styles.helperText}>{formatDisputeResolution(disputeResolutions[tx.id])}</Text>
                     : <Text style={styles.helperText}>✅ This rental has been completed.</Text>}
                   {(adminCharges[tx.id] ?? []).map((c, i) => (
-                    <Text key={i} style={c.status === 'succeeded' ? styles.chargeText : styles.overdueText}>{chargeLabel(c)}</Text>
+                    <Text key={i} style={c.status === 'succeeded' ? styles.helperText : styles.overdueText}>{chargeLabel(c)}</Text>
                   ))}
                 </>
               )}
@@ -1307,14 +1312,15 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                   : <Text style={styles.helperText}>⚠️ This rental was cancelled — refund processed per policy.</Text>
               )}
               {(
-                tx.status === 'disputed'
+                tx.status === 'paid'
+                || tx.status === 'active'
+                || tx.status === 'disputed'
                 || !!disputeResolutions[tx.id]
                 || (adminCharges[tx.id]?.length ?? 0) > 0
-                || (tx.status === 'active' && lateDaysFor(tx) > 0)
               ) && (
-                <TouchableOpacity style={styles.messageSupportBtn} onPress={() => handleMessageSupport(tx.id)}>
+                <TouchableOpacity style={styles.messageSupportBtn} onPress={() => handleReportIssue(tx.id)}>
                   <ShieldCheck size={14} color={colors.primary} />
-                  <Text style={styles.messageSupportBtnText}>Message UseIT About This</Text>
+                  <Text style={styles.messageSupportBtnText}>Contact UseIT</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -1470,13 +1476,13 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
               <>
                 <View style={styles.modalHandle} />
                 <View style={styles.modalIconRow}>
-                  <View style={[styles.modalIconCircle, { backgroundColor: colors.warningBg }]}>
-                    <MessageSquare size={24} color={colors.warning} />
+                  <View style={[styles.modalIconCircle, { backgroundColor: colors.infoBg }]}>
+                    <ShieldCheck size={24} color={colors.primary} />
                   </View>
                 </View>
-                <Text style={styles.modalTitle}>Report Damage</Text>
+                <Text style={styles.modalTitle}>Contact UseIT</Text>
                 <Text style={styles.modalBody}>
-                  We always recommend resolving issues directly first. Reach out to the other party — most disputes are settled quickly through a simple conversation.
+                  We recommend resolving this directly with {otherUserName} first — most issues get sorted out faster in chat.
                 </Text>
                 <TouchableOpacity
                   style={styles.modalPrimaryBtn}
@@ -1486,13 +1492,24 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                   }}
                 >
                   <MessageSquare size={16} color={colors.btnText} />
-                  <Text style={styles.modalPrimaryBtnText}>Message them directly</Text>
+                  <Text style={styles.modalPrimaryBtnText}>Back to Chat</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalOutlineBtn}
+                  onPress={() => {
+                    const id = disputeModal.transactionId;
+                    setDisputeModal(prev => ({ ...prev, visible: false }));
+                    if (id) handleMessageSupport(id);
+                  }}
+                >
+                  <ShieldCheck size={16} color={colors.primary} />
+                  <Text style={styles.modalOutlineBtnText}>Message UseIT</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.modalSecondaryBtn}
                   onPress={() => setDisputeModal(prev => ({ ...prev, step: 2 }))}
                 >
-                  <Text style={styles.modalSecondaryBtnText}>Escalate to UseIT Arbitration →</Text>
+                  <Text style={styles.modalSecondaryBtnText}>Report a Problem →</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => setDisputeModal(prev => ({ ...prev, visible: false }))} style={styles.modalCancelLink}>
                   <Text style={styles.modalCancelLinkText}>Cancel</Text>
@@ -1710,6 +1727,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   requestHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 7, flexShrink: 1 },
   requestDateText: { color: colors.text, fontSize: 15, fontWeight: '700', flexShrink: 1 },
   requestSubText: { color: colors.textMuted, fontSize: 13, marginTop: -6 },
+  requestStatusRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   requestStatusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   requestStatusPillText: { fontSize: 12, fontWeight: '700' },
   requestStatus: { gap: 8, marginTop: 2, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border },
@@ -1740,14 +1758,11 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   qrActionText: { color: colors.btnText, fontWeight: '700', fontSize: 15 },
   handoffSecondary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  reportLink: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 4 },
-  reportLinkText: { color: colors.danger, fontSize: 13, fontWeight: '600' },
   statusExpired: { color: colors.warning, fontWeight: '600', fontSize: 13 },
   // Plain-language caption shown for every rental status — what stage this is
   // and what (if anything) needs to happen next, role-aware.
   helperText: { fontSize: 13.5, color: colors.textSecondary, lineHeight: 19 },
   overdueText: { fontSize: 13.5, color: colors.danger, lineHeight: 19, fontWeight: '600' },
-  chargeText: { fontSize: 13.5, color: colors.warning, lineHeight: 19, fontWeight: '600' },
   helperTextFlex: { flex: 1 },
   messageSupportBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
@@ -1857,6 +1872,11 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center',
   },
   modalPrimaryBtnText: { color: colors.btnText, fontSize: 15, fontWeight: '700' },
+  modalOutlineBtn: {
+    height: 48, borderRadius: 14, borderWidth: 1, borderColor: colors.primary,
+    flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center',
+  },
+  modalOutlineBtnText: { color: colors.primary, fontSize: 14, fontWeight: '700' },
   modalSecondaryBtn: { alignItems: 'center', paddingVertical: 8 },
   modalSecondaryBtnText: { color: colors.primary, fontSize: 14, fontWeight: '600' },
   modalCancelLink: { alignItems: 'center', paddingVertical: 4 },
