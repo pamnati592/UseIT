@@ -1,5 +1,12 @@
 # Next Suggested Step — For Nati 👋
 
+## ✅ Rental card itself now shows overdue status + charges (2026-08-19)
+Found live while testing the overdue penalty: charging worked and posted a system message in Chat, but the Deal Board card — the actual "single live status board for that date range" per this app's own SAS rule — kept showing the plain "Rental is active, scan QR to complete" text, as if nothing had happened. A renter or lender opening that card had no way to see they were late or already charged without digging through chat history.
+
+- `ChatRoomScreen` now fetches `admin_charges` for the conversation alongside disputes (same pattern, same two fetch points: mount + focus-safety-net).
+- The `active` card now shows a red "⏰ N days overdue — a late fee is charged automatically once returned" line whenever `end_date` has passed (same day-key math `charge-late-fee` uses server-side, so the card can't disagree with what actually gets charged), plus one line per `admin_charges` row already on that transaction (💰 succeeded, ⚠️ failed — pointing at "Message UseIT" for the failed case). The `completed` card shows the same charge lines too, since the daily late fee is charged exactly at that status transition.
+- **Verified against the real ₪5 test charge**: transaction is 18 days overdue as of now, has one `succeeded` `late_fee_cliff` row — the card should read "⏰ 18 days overdue..." + "💰 Overdue penalty charged: ₪5" above the usual return-QR button. Typecheck clean, **not yet re-confirmed on device** — worth a look next session.
+
 ## ✅ Support threads now notify like real conversations (2026-08-17)
 User caught the gap live while testing: a user had no way to know UseIT messaged them unless they happened to open the exact rental's chat and tap "Message UseIT About This" — no badge, nothing in the Chats list. Raised as a design question ("nesting a UseIT chat inside a peer chat feels unintuitive") rather than just a bug — the fix folds support threads into the same unified unread system everything else already uses, instead of inventing a second notification path.
 

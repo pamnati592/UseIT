@@ -62,6 +62,13 @@ type Transaction = {
   approved_at?: string | null;
 };
 
+type AdminCharge = {
+  reason: 'damage' | 'late_fee_daily' | 'late_fee_cliff';
+  amount: number;
+  status: 'succeeded' | 'failed';
+  created_at: string;
+};
+
 type Purchase = {
   id: string;
   item_id: string;
@@ -113,6 +120,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   const [pickupLocation, setPickupLocation] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<Record<string, Transaction>>({});
   const [disputeResolutions, setDisputeResolutions] = useState<Record<string, string>>({});
+  const [adminCharges, setAdminCharges] = useState<Record<string, AdminCharge[]>>({});
   const [purchases, setPurchases] = useState<Record<string, Purchase>>({});
   const [actionLoading, setActionLoading] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
@@ -144,7 +152,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
         if (data?.full_name && mounted) setCurrentUserName(data.full_name);
       });
 
-      const [messagesRes, convRes, txRes, purchasesRes, disputesRes] = await Promise.all([
+      const [messagesRes, convRes, txRes, purchasesRes, disputesRes, chargesRes] = await Promise.all([
         supabase
           .from('messages')
           .select('id, sender_id, content, created_at, transaction_id')
@@ -169,6 +177,13 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
         supabase
           .from('disputes')
           .select('transaction_id, status, resolution, transactions!inner(conversation_id)')
+          .eq('transactions.conversation_id', conversationId),
+        // Damage/late-fee charges — the active-status card otherwise looks like
+        // an ordinary in-progress rental even after a real charge has already
+        // been placed against it.
+        supabase
+          .from('admin_charges')
+          .select('transaction_id, reason, amount, status, created_at, transactions!inner(conversation_id)')
           .eq('transactions.conversation_id', conversationId),
       ]);
 
@@ -209,6 +224,12 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
         if (d.status === 'resolved' && d.resolution) disputeMap[d.transaction_id] = d.resolution;
       });
       setDisputeResolutions(disputeMap);
+
+      const chargeMap: Record<string, AdminCharge[]> = {};
+      (chargesRes.data as any[] ?? []).forEach(c => {
+        (chargeMap[c.transaction_id] ??= []).push({ reason: c.reason, amount: c.amount, status: c.status, created_at: c.created_at });
+      });
+      setAdminCharges(chargeMap);
 
       const purchaseMap: Record<string, Purchase> = {};
       (purchasesRes.data as Purchase[] ?? []).forEach(p => { purchaseMap[p.id] = p; });
@@ -303,7 +324,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     useCallback(() => {
       let active = true;
       (async () => {
-        const [txRes, purchasesRes, disputesRes] = await Promise.all([
+        const [txRes, purchasesRes, disputesRes, chargesRes] = await Promise.all([
           supabase
             .from('transactions')
             .select('id, status, start_date, end_date, total_price, approved_at')
@@ -315,6 +336,10 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
           supabase
             .from('disputes')
             .select('transaction_id, status, resolution, transactions!inner(conversation_id)')
+            .eq('transactions.conversation_id', conversationId),
+          supabase
+            .from('admin_charges')
+            .select('transaction_id, reason, amount, status, created_at, transactions!inner(conversation_id)')
             .eq('transactions.conversation_id', conversationId),
         ]);
         if (!active) return;
@@ -338,6 +363,13 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
             if (d.status === 'resolved' && d.resolution) disputeMap[d.transaction_id] = d.resolution;
           });
           setDisputeResolutions((prev) => ({ ...prev, ...disputeMap }));
+        }
+        if (chargesRes.data) {
+          const chargeMap: Record<string, AdminCharge[]> = {};
+          (chargesRes.data as any[]).forEach(c => {
+            (chargeMap[c.transaction_id] ??= []).push({ reason: c.reason, amount: c.amount, status: c.status, created_at: c.created_at });
+          });
+          setAdminCharges((prev) => ({ ...prev, ...chargeMap }));
         }
 
         // Read status deserves the same safety net: the one-time mount effect's
@@ -477,6 +509,21 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
 
   function canCancelTx(tx: Transaction): boolean {
     return dayKey(new Date().toISOString()) <= dayKey(tx.end_date);
+  }
+
+  // Same day-key math as charge-late-fee's server-side calculation — the card
+  // must agree with what actually gets charged, not compute its own notion of
+  // "late" from a different clock.
+  function lateDaysFor(tx: Transaction): number {
+    const days = (new Date(dayKey(new Date().toISOString())).getTime() - new Date(dayKey(tx.end_date)).getTime()) / 86400000;
+    return Math.max(0, Math.round(days));
+  }
+
+  function chargeLabel(c: AdminCharge): string {
+    const what = c.reason === 'damage' ? 'Damage' : c.reason === 'late_fee_cliff' ? 'Overdue penalty' : 'Late fee';
+    return c.status === 'succeeded'
+      ? `💰 ${what} charged: ₪${c.amount}`
+      : `⚠️ ${what} assessed (₪${c.amount}) — automatic charge failed, contact UseIT support`;
   }
 
   // Mirrors refund-payment's server-side tier so the confirmation dialog shows
@@ -1206,30 +1253,47 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                   </View>
                 </View>
               )}
-              {tx.status === 'active' && (
-                <View style={styles.handoffBlock}>
-                  <Text style={styles.helperText}>
-                    {isLender
-                      ? `Rental is active — scan ${otherUserName}'s QR when they return the item.`
-                      : `Rental is active — show this QR when you return the item.`}
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.qrActionBtn}
-                    onPress={() => navigation.navigate(isLender ? 'QRScan' : 'QRDisplay', { transactionId: tx.id, phase: 'return', itemTitle, otherName: otherUserName, conversationId })}
-                  >
-                    {isLender
-                      ? <><ScanLine size={16} color={colors.btnText} /><Text style={styles.qrActionText}>Scan to Complete</Text></>
-                      : <><QrCode size={16} color={colors.btnText} /><Text style={styles.qrActionText}>Show Return QR</Text></>}
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.reportLink} onPress={() => handleReportIssue(tx.id)}>
-                    <TriangleAlert size={14} color={colors.danger} /><Text style={styles.reportLinkText}>Report issue</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+              {tx.status === 'active' && (() => {
+                const lateDays = lateDaysFor(tx);
+                const charges = adminCharges[tx.id] ?? [];
+                return (
+                  <View style={styles.handoffBlock}>
+                    {lateDays > 0 && (
+                      <Text style={styles.overdueText}>
+                        ⏰ {lateDays} day{lateDays > 1 ? 's' : ''} overdue — a late fee is charged automatically once returned.
+                      </Text>
+                    )}
+                    {charges.map((c, i) => (
+                      <Text key={i} style={c.status === 'succeeded' ? styles.chargeText : styles.overdueText}>{chargeLabel(c)}</Text>
+                    ))}
+                    <Text style={styles.helperText}>
+                      {isLender
+                        ? `Rental is active — scan ${otherUserName}'s QR when they return the item.`
+                        : `Rental is active — show this QR when you return the item.`}
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.qrActionBtn}
+                      onPress={() => navigation.navigate(isLender ? 'QRScan' : 'QRDisplay', { transactionId: tx.id, phase: 'return', itemTitle, otherName: otherUserName, conversationId })}
+                    >
+                      {isLender
+                        ? <><ScanLine size={16} color={colors.btnText} /><Text style={styles.qrActionText}>Scan to Complete</Text></>
+                        : <><QrCode size={16} color={colors.btnText} /><Text style={styles.qrActionText}>Show Return QR</Text></>}
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.reportLink} onPress={() => handleReportIssue(tx.id)}>
+                      <TriangleAlert size={14} color={colors.danger} /><Text style={styles.reportLinkText}>Report issue</Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })()}
               {tx.status === 'completed' && (
-                disputeResolutions[tx.id]
-                  ? <Text style={styles.helperText}>{formatDisputeResolution(disputeResolutions[tx.id])}</Text>
-                  : <Text style={styles.helperText}>✅ This rental has been completed.</Text>
+                <>
+                  {disputeResolutions[tx.id]
+                    ? <Text style={styles.helperText}>{formatDisputeResolution(disputeResolutions[tx.id])}</Text>
+                    : <Text style={styles.helperText}>✅ This rental has been completed.</Text>}
+                  {(adminCharges[tx.id] ?? []).map((c, i) => (
+                    <Text key={i} style={c.status === 'succeeded' ? styles.chargeText : styles.overdueText}>{chargeLabel(c)}</Text>
+                  ))}
+                </>
               )}
               {tx.status === 'rejected' && (
                 <Text style={styles.helperText}>❌ This request was declined.</Text>
@@ -1677,6 +1741,8 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   // Plain-language caption shown for every rental status — what stage this is
   // and what (if anything) needs to happen next, role-aware.
   helperText: { fontSize: 13.5, color: colors.textSecondary, lineHeight: 19 },
+  overdueText: { fontSize: 13.5, color: colors.danger, lineHeight: 19, fontWeight: '600' },
+  chargeText: { fontSize: 13.5, color: colors.warning, lineHeight: 19, fontWeight: '600' },
   helperTextFlex: { flex: 1 },
   messageSupportBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
