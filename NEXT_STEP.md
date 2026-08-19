@@ -1,5 +1,16 @@
 # Next Suggested Step — For Nati 👋
 
+## ✅ Written reviews are now actually visible; two real reputation bugs fixed (2026-08-19)
+Requested after finding that only the numeric star average showed anywhere — the actual written comments from `item_reviews`/`ratings` were being collected but never displayed. Building this surfaced two real, pre-existing correctness bugs, both fixed:
+
+**Bug 1 — lender_score and renter_score were computed from the same ratings.** `recompute_lender_score`/`recompute_renter_score` both averaged *every* rating a user ever received (`ratings.reviewee_id = user`), with no check on which role they actually held in that transaction. A rating left while someone was renting fed into their lender score exactly as much as into their renter score. Confirmed live: Nati's 4 received ratings were identical inputs to both scores. Fixed by joining to `transactions` and requiring the reviewee actually held that role (`t.lender_id = p_lender_id` / `t.renter_id = p_renter_id`) — migration `20260819_fix_review_role_mixing.sql`, reran the retroactive bootstrap so real scores updated immediately (Nati: lender 4.25 vs renter 3.10 now, previously identical; **Ori's lender_score dropped to 2.97 — New User tier, 0% fee discount** under spec 4.12, worth knowing before demoing that tier).
+
+**Bug 2 — profile review counts/lists silently broke for third-party viewers.** `transactions` RLS is scoped to its own two parties (`renter_id = auth.uid() or lender_id = auth.uid()`). `PublicProfileScreen`'s existing review-count query joined through `transactions` client-side, so it only counted reviews from transactions the *viewer themselves* happened to be part of — a real public trust score needs to work for total strangers. Fixed with a new narrow RPC, `list_role_reviews(p_user_id, p_role)` (SECURITY DEFINER, returns only review fields — never the raw transaction row), verified against a simulated unrelated third-party caller. `PublicProfileScreen`'s counts now use it too, not just the new screen.
+
+**New `ReviewsListScreen`** (one reusable screen, SAS): item reviews (`ItemDetailScreen` — tap the ★ rating row) and profile reviews-by-role (tap the Lender/Renter score badge on `PublicProfileScreen` **and** your own `ProfileScreen`). Wired into both `HomeStackNavigator` and `ProfileStackNavigator`. Verified against real data — a real Hebrew comment on the Camping Tent item ("מעולה אבל לא טוב") renders correctly.
+
+Typecheck clean. **Not pushed yet** (separate batch from the "push everything" request earlier this session) — let me know when to push.
+
 ## ✅ Dispute ruling gets the same status-pill + info-icon treatment (2026-08-19)
 Same request as the overdue-card simplification, extended to resolved disputes: "if I rule in someone's favor, can both parties see a summary of the ruling behind an ⓘ instead of it sitting on the card as a paragraph?"
 

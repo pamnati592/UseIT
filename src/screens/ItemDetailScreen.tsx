@@ -417,12 +417,15 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
             </View>
 
             {itemRating && (
-              <View style={styles.itemRatingRow}>
+              <TouchableOpacity
+                style={styles.itemRatingRow}
+                onPress={() => navigation.navigate('ReviewsList', { mode: 'item', itemId: item.id, itemTitle: item.title })}
+              >
                 <Star size={15} color={STAR_COLOR} fill={STAR_COLOR} strokeWidth={1.8} />
                 <Text style={styles.itemRatingText}>
                   {itemRating.avg.toFixed(1)} · {itemRating.count} review{itemRating.count > 1 ? 's' : ''}
                 </Text>
-              </View>
+              </TouchableOpacity>
             )}
 
             <View style={styles.tagRow}>

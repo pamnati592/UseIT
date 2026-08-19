@@ -14,6 +14,7 @@ import AdminItemsScreen from '../screens/AdminItemsScreen';
 import AdminUsersScreen from '../screens/AdminUsersScreen';
 import AdminOverdueScreen from '../screens/AdminOverdueScreen';
 import SupportThreadScreen from '../screens/SupportThreadScreen';
+import ReviewsListScreen from '../screens/ReviewsListScreen';
 import type { Item } from '../types/item';
 
 export type ProfileStackParamList = {
@@ -32,6 +33,9 @@ export type ProfileStackParamList = {
   AdminUsers: undefined;
   AdminOverdue: undefined;
   SupportThread: { threadId: string; title: string };
+  ReviewsList:
+    | { mode: 'item'; itemId: string; itemTitle: string }
+    | { mode: 'profile'; userId: string; userName: string; role: 'lender' | 'renter' };
 };
 
 const Stack = createNativeStackNavigator<ProfileStackParamList>();
@@ -54,6 +58,7 @@ export default function ProfileStackNavigator() {
       <Stack.Screen name="AdminUsers" component={AdminUsersScreen} options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="AdminOverdue" component={AdminOverdueScreen} options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="SupportThread" component={SupportThreadScreen as any} options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="ReviewsList" component={ReviewsListScreen as any} options={{ animation: 'slide_from_right' }} />
     </Stack.Navigator>
   );
 }

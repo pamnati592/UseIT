@@ -271,15 +271,21 @@ export default function ProfileScreen() {
 
             {/* Score badges */}
             <View style={styles.scoreRow}>
-              <View style={styles.scoreBadge}>
+              <TouchableOpacity
+                style={styles.scoreBadge}
+                onPress={() => userId && navigation.navigate('ReviewsList', { mode: 'profile', userId, userName: userName ?? 'You', role: 'lender' })}
+              >
                 <Text style={styles.scoreValue}>{scoreLabel(lenderScore)}</Text>
                 <Text style={styles.scoreLabel}>Lender</Text>
-              </View>
+              </TouchableOpacity>
               <View style={styles.scoreDivider} />
-              <View style={styles.scoreBadge}>
+              <TouchableOpacity
+                style={styles.scoreBadge}
+                onPress={() => userId && navigation.navigate('ReviewsList', { mode: 'profile', userId, userName: userName ?? 'You', role: 'renter' })}
+              >
                 <Text style={styles.scoreValue}>{scoreLabel(renterScore)}</Text>
                 <Text style={styles.scoreLabel}>Renter</Text>
-              </View>
+              </TouchableOpacity>
             </View>
 
             {/* Listings heading */}

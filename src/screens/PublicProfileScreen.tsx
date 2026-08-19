@@ -49,7 +49,7 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
 
   useEffect(() => {
     async function load() {
-      const [profileRes, itemsRes, ratingsRes] = await Promise.all([
+      const [profileRes, itemsRes, lenderReviewsRes, renterReviewsRes] = await Promise.all([
         supabase.from('profiles').select('city, lender_score, renter_score, lender_cancellations, avatar_url').eq('id', userId).single(),
         supabase
           .from('items')
@@ -60,8 +60,12 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
           .order('created_at', { ascending: false }),
         // A rating's role (lender vs renter review) isn't stored directly —
         // it's implicit in which side of the linked transaction the reviewee
-        // was on, same as the score-recompute functions key off.
-        supabase.from('ratings').select('transactions(lender_id, renter_id)').eq('reviewee_id', userId),
+        // was on, same as the score-recompute functions key off. Goes through
+        // list_role_reviews rather than a raw join on transactions: that
+        // table's RLS is scoped to its own two parties, which silently
+        // undercounted for any viewer who wasn't personally involved.
+        supabase.rpc('list_role_reviews', { p_user_id: userId, p_role: 'lender' }),
+        supabase.rpc('list_role_reviews', { p_user_id: userId, p_role: 'renter' }),
       ]);
       if (profileRes.data) {
         setCity((profileRes.data as any).city ?? null);
@@ -71,11 +75,8 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
         setAvatarUrl((profileRes.data as any).avatar_url ?? null);
       }
       if (itemsRes.data) setItems(itemsRes.data as Item[]);
-      if (ratingsRes.data) {
-        const rows = ratingsRes.data as any[];
-        setLenderReviewCount(rows.filter(r => r.transactions?.lender_id === userId).length);
-        setRenterReviewCount(rows.filter(r => r.transactions?.renter_id === userId).length);
-      }
+      setLenderReviewCount((lenderReviewsRes.data as any[])?.length ?? 0);
+      setRenterReviewCount((renterReviewsRes.data as any[])?.length ?? 0);
       setLoading(false);
     }
     load();
@@ -148,21 +149,27 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
             </View>
 
             <View style={styles.scoreRow}>
-              <View style={styles.scoreBadge}>
+              <TouchableOpacity
+                style={styles.scoreBadge}
+                onPress={() => navigation.navigate('ReviewsList', { mode: 'profile', userId, userName, role: 'lender' })}
+              >
                 <Text style={styles.scoreValue}>{scoreLabel(lenderScore)}</Text>
                 <Text style={styles.scoreLabel}>Lender</Text>
                 <Text style={styles.reviewCount}>
                   {lenderReviewCount} {lenderReviewCount === 1 ? 'review' : 'reviews'}
                 </Text>
-              </View>
+              </TouchableOpacity>
               <View style={styles.scoreDivider} />
-              <View style={styles.scoreBadge}>
+              <TouchableOpacity
+                style={styles.scoreBadge}
+                onPress={() => navigation.navigate('ReviewsList', { mode: 'profile', userId, userName, role: 'renter' })}
+              >
                 <Text style={styles.scoreValue}>{scoreLabel(renterScore)}</Text>
                 <Text style={styles.scoreLabel}>Renter</Text>
                 <Text style={styles.reviewCount}>
                   {renterReviewCount} {renterReviewCount === 1 ? 'review' : 'reviews'}
                 </Text>
-              </View>
+              </TouchableOpacity>
             </View>
 
             {lenderCancellations >= LENDER_CANCELLATION_WARNING_THRESHOLD && (
