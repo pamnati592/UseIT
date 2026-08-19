@@ -1,5 +1,15 @@
 # Next Suggested Step — For Nati 👋
 
+## ✅ Dispute resolution redesigned: pick a side, review, then publish (2026-08-19)
+Requested redesign of `AdminDisputesScreen`'s resolve flow: previously "Favor Renter"/"Favor Lender" were both live buttons that immediately opened a confirm dialog and sent the ruling. Now:
+1. Tap Favor Renter or Favor Lender — purely local selection, nothing sent, freely switchable to the other side any time before publishing (the non-selected button dims to show which side is currently chosen).
+2. The relevant fields for that side open below: a message-to-both-parties note (either side), plus the damage amount field only when Favor Lender is selected.
+3. **Publish Ruling** is the one deliberate send action — this is what actually calls `admin_resolve_dispute` + the refund/charge step. The old per-button `Alert.alert` confirm is gone; the pick-review-publish sequence itself is the confirmation now, not a redundant second modal on top of it.
+
+All the underlying logic from the reopen-on-refund-failure fix earlier today is unchanged — `resolve()` still runs from the same code path, just triggered by Publish Ruling instead of an Alert button.
+
+Typecheck clean. **Not yet seen on device.**
+
 ## ✅ Written reviews are now actually visible; two real reputation bugs fixed (2026-08-19)
 Requested after finding that only the numeric star average showed anywhere — the actual written comments from `item_reviews`/`ratings` were being collected but never displayed. Building this surfaced two real, pre-existing correctness bugs, both fixed:
 

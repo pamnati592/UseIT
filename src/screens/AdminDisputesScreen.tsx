@@ -39,6 +39,10 @@ export default function AdminDisputesScreen({ navigation }: Props) {
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [damageAmounts, setDamageAmounts] = useState<Record<string, string>>({});
+  // Which way the admin is leaning, per dispute — purely local until Publish
+  // Ruling is tapped. Freely switchable between renter/lender before then;
+  // nothing is sent to either party until the explicit publish action.
+  const [selectedFavor, setSelectedFavor] = useState<Record<string, 'renter' | 'lender'>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -63,6 +67,10 @@ export default function AdminDisputesScreen({ navigation }: Props) {
     return `${fmt(start)} → ${fmt(end)}`;
   }
 
+  // Called only from "Publish Ruling" — the admin has already picked a side
+  // and reviewed the fields, so this is the actual send, not a second
+  // confirmation gate on top of that (per the redesigned flow: pick a side,
+  // relevant fields open, freely switch sides, publish once ready).
   async function resolve(transactionId: string, favor: 'renter' | 'lender') {
     const damageRaw = favor === 'lender' ? damageAmounts[transactionId]?.trim() : '';
     const damageAmount = damageRaw ? Number(damageRaw) : 0;
@@ -71,72 +79,57 @@ export default function AdminDisputesScreen({ navigation }: Props) {
       return;
     }
 
-    Alert.alert(
-      `Rule in favor of the ${favor}?`,
-      favor === 'renter'
-        ? 'The renter will receive a full refund. This cannot be undone.'
-        : damageAmount > 0
-          ? `The lender keeps the payment already taken, and ₪${damageAmount} will be charged to the renter for damage. This cannot be undone.`
-          : 'The lender keeps the payment already taken. This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm', style: 'destructive', onPress: async () => {
-            setResolvingId(transactionId);
+    setResolvingId(transactionId);
 
-            // admin_resolve_dispute and the Stripe step below are not one
-            // atomic operation — if the ruling itself fails, nothing was
-            // committed, so a plain error is enough.
-            const { error } = await supabase.rpc('admin_resolve_dispute', {
-              p_transaction_id: transactionId,
-              p_favor: favor,
-              p_note: notes[transactionId]?.trim() || null,
-            });
-            if (error) {
-              Alert.alert('Error', error.message ?? 'Could not resolve the dispute.');
-              setResolvingId(null);
-              return;
-            }
+    // admin_resolve_dispute and the Stripe step below are not one atomic
+    // operation — if the ruling itself fails, nothing was committed, so a
+    // plain error is enough.
+    const { error } = await supabase.rpc('admin_resolve_dispute', {
+      p_transaction_id: transactionId,
+      p_favor: favor,
+      p_note: notes[transactionId]?.trim() || null,
+    });
+    if (error) {
+      Alert.alert('Error', error.message ?? 'Could not resolve the dispute.');
+      setResolvingId(null);
+      return;
+    }
 
-            if (favor === 'renter') {
-              const { error: refundError } = await supabase.functions.invoke('refund-payment', {
-                body: { transaction_id: transactionId, reason: 'admin_dispute_resolved' },
-              });
-              if (refundError) {
-                // The ruling is already committed (transaction cancelled, dispute
-                // resolved) — a failed refund here previously left it silently
-                // "resolved" with no money moved, and invisible in this queue
-                // forever, since admin_list_disputes only returns status =
-                // 'disputed' transactions. Reopen it instead of leaving that gap.
-                await supabase.rpc('admin_reopen_dispute', { p_transaction_id: transactionId });
-                Alert.alert(
-                  'Refund failed — dispute reopened',
-                  `The ruling could not be completed (${refundError.message ?? 'refund failed'}). This case has been reopened so you can retry once the issue is fixed.`
-                );
-                setResolvingId(null);
-                return;
-              }
-            } else if (damageAmount > 0) {
-              // Favor-lender stands on its own regardless of the damage charge —
-              // the lender keeps their payment either way — so a failed charge
-              // doesn't need to reopen the dispute, just notify the admin. The
-              // renter is separately notified in chat (see admin-charge).
-              const { data: chargeResult, error: chargeError } = await supabase.functions.invoke('admin-charge', {
-                body: { transaction_id: transactionId, amount: damageAmount, reason: 'damage' },
-              });
-              if (chargeError) {
-                Alert.alert('Damage charge failed', chargeError.message ?? 'Could not process the charge.');
-              } else if (chargeResult && !chargeResult.ok) {
-                Alert.alert('Damage charge failed', 'The card on file was declined or missing — the renter has been notified in chat to arrange payment directly.');
-              }
-            }
+    if (favor === 'renter') {
+      const { error: refundError } = await supabase.functions.invoke('refund-payment', {
+        body: { transaction_id: transactionId, reason: 'admin_dispute_resolved' },
+      });
+      if (refundError) {
+        // The ruling is already committed (transaction cancelled, dispute
+        // resolved) — a failed refund here previously left it silently
+        // "resolved" with no money moved, and invisible in this queue
+        // forever, since admin_list_disputes only returns status =
+        // 'disputed' transactions. Reopen it instead of leaving that gap.
+        await supabase.rpc('admin_reopen_dispute', { p_transaction_id: transactionId });
+        Alert.alert(
+          'Refund failed — dispute reopened',
+          `The ruling could not be completed (${refundError.message ?? 'refund failed'}). This case has been reopened so you can retry once the issue is fixed.`
+        );
+        setResolvingId(null);
+        return;
+      }
+    } else if (damageAmount > 0) {
+      // Favor-lender stands on its own regardless of the damage charge —
+      // the lender keeps their payment either way — so a failed charge
+      // doesn't need to reopen the dispute, just notify the admin. The
+      // renter is separately notified in chat (see admin-charge).
+      const { data: chargeResult, error: chargeError } = await supabase.functions.invoke('admin-charge', {
+        body: { transaction_id: transactionId, amount: damageAmount, reason: 'damage' },
+      });
+      if (chargeError) {
+        Alert.alert('Damage charge failed', chargeError.message ?? 'Could not process the charge.');
+      } else if (chargeResult && !chargeResult.ok) {
+        Alert.alert('Damage charge failed', 'The card on file was declined or missing — the renter has been notified in chat to arrange payment directly.');
+      }
+    }
 
-            setDisputes(prev => prev.filter(d => d.transaction_id !== transactionId));
-            setResolvingId(null);
-          },
-        },
-      ]
-    );
+    setDisputes(prev => prev.filter(d => d.transaction_id !== transactionId));
+    setResolvingId(null);
   }
 
   async function messageParty(transactionId: string, userId: string, label: string) {
@@ -154,6 +147,7 @@ export default function AdminDisputesScreen({ navigation }: Props) {
 
   function renderItem({ item: d }: { item: DisputeRow }) {
     const resolving = resolvingId === d.transaction_id;
+    const selected = selectedFavor[d.transaction_id];
     return (
       <View style={styles.card}>
         <View style={styles.cardHeader}>
@@ -183,24 +177,6 @@ export default function AdminDisputesScreen({ navigation }: Props) {
           <Image source={{ uri: d.signedPhotoUrl }} style={styles.evidencePhoto} resizeMode="cover" />
         )}
 
-        <TextInput
-          style={[styles.noteInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.bg }]}
-          placeholder="Resolution note (optional, kept with the dispute record)"
-          placeholderTextColor={colors.textMuted}
-          value={notes[d.transaction_id] ?? ''}
-          onChangeText={(t) => setNotes(prev => ({ ...prev, [d.transaction_id]: t }))}
-          multiline
-        />
-
-        <TextInput
-          style={[styles.noteInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.bg, minHeight: undefined, height: 42 }]}
-          placeholder="Damage amount to charge renter (₪, optional — only applies if favoring the lender)"
-          placeholderTextColor={colors.textMuted}
-          keyboardType="numeric"
-          value={damageAmounts[d.transaction_id] ?? ''}
-          onChangeText={(t) => setDamageAmounts(prev => ({ ...prev, [d.transaction_id]: t }))}
-        />
-
         <View style={styles.messageRow}>
           <TouchableOpacity
             style={styles.messageBtn}
@@ -218,22 +194,53 @@ export default function AdminDisputesScreen({ navigation }: Props) {
           </TouchableOpacity>
         </View>
 
+        {/* Pick a side first — nothing is sent yet. The relevant fields for
+            that side open below, and the side can still be switched freely
+            right up until Publish Ruling is tapped. */}
         <View style={styles.actionsRow}>
           <TouchableOpacity
-            style={[styles.actionBtn, styles.favorRenterBtn, resolving && styles.btnDisabled]}
-            onPress={() => resolve(d.transaction_id, 'renter')}
-            disabled={resolving}
+            style={[styles.actionBtn, styles.favorRenterBtn, selected && selected !== 'renter' && styles.actionBtnDimmed]}
+            onPress={() => setSelectedFavor(prev => ({ ...prev, [d.transaction_id]: 'renter' }))}
           >
-            {resolving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.actionBtnText}>Favor Renter</Text>}
+            <Text style={styles.actionBtnText}>Favor Renter</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.actionBtn, styles.favorLenderBtn, resolving && styles.btnDisabled]}
-            onPress={() => resolve(d.transaction_id, 'lender')}
-            disabled={resolving}
+            style={[styles.actionBtn, styles.favorLenderBtn, selected && selected !== 'lender' && styles.actionBtnDimmed]}
+            onPress={() => setSelectedFavor(prev => ({ ...prev, [d.transaction_id]: 'lender' }))}
           >
-            {resolving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.actionBtnText}>Favor Lender</Text>}
+            <Text style={styles.actionBtnText}>Favor Lender</Text>
           </TouchableOpacity>
         </View>
+
+        {selected && (
+          <View style={styles.publishSection}>
+            <TextInput
+              style={[styles.noteInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.bg }]}
+              placeholder={`Message to ${d.renter_name} and ${d.lender_name} (optional)`}
+              placeholderTextColor={colors.textMuted}
+              value={notes[d.transaction_id] ?? ''}
+              onChangeText={(t) => setNotes(prev => ({ ...prev, [d.transaction_id]: t }))}
+              multiline
+            />
+            {selected === 'lender' && (
+              <TextInput
+                style={[styles.noteInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.bg, minHeight: undefined, height: 42 }]}
+                placeholder="Damage amount to charge the renter (₪, optional)"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="numeric"
+                value={damageAmounts[d.transaction_id] ?? ''}
+                onChangeText={(t) => setDamageAmounts(prev => ({ ...prev, [d.transaction_id]: t }))}
+              />
+            )}
+            <TouchableOpacity
+              style={[styles.publishBtn, resolving && styles.btnDisabled]}
+              onPress={() => resolve(d.transaction_id, selected)}
+              disabled={resolving}
+            >
+              {resolving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.publishBtnText}>Publish Ruling</Text>}
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     );
   }
@@ -316,6 +323,13 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   favorRenterBtn: { backgroundColor: '#2563eb' },
   favorLenderBtn: { backgroundColor: '#15803d' },
+  actionBtnDimmed: { opacity: 0.35 },
   actionBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   btnDisabled: { opacity: 0.6 },
+  publishSection: { gap: 10 },
+  publishBtn: {
+    height: 44, borderRadius: 10, backgroundColor: colors.text,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  publishBtnText: { color: colors.bg, fontSize: 14, fontWeight: '700' },
 });
