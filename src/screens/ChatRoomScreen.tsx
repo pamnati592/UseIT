@@ -1306,7 +1306,12 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                   ? <Text style={styles.helperText}>{formatDisputeResolution(disputeResolutions[tx.id])}</Text>
                   : <Text style={styles.helperText}>⚠️ This rental was cancelled — refund processed per policy.</Text>
               )}
-              {(tx.status === 'disputed' || disputeResolutions[tx.id]) && (
+              {(
+                tx.status === 'disputed'
+                || !!disputeResolutions[tx.id]
+                || (adminCharges[tx.id]?.length ?? 0) > 0
+                || (tx.status === 'active' && lateDaysFor(tx) > 0)
+              ) && (
                 <TouchableOpacity style={styles.messageSupportBtn} onPress={() => handleMessageSupport(tx.id)}>
                   <ShieldCheck size={14} color={colors.primary} />
                   <Text style={styles.messageSupportBtnText}>Message UseIT About This</Text>
