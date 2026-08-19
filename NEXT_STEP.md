@@ -1,5 +1,17 @@
 # Next Suggested Step — For Nati 👋
 
+## ✅ Backlog S started — AI auto-fill from the item's own photo (2026-08-19)
+Started, not the full backlog S scope — single-item auto-fill only (Q, the "one photo of a pile of objects → multiple detected items" bulk-scan feature, is still separate and not started).
+
+- New edge function `analyze-item-photo`: takes the cover photo's base64, sends it to Groq's vision model (`qwen/qwen3.6-27b` — Groq's only current multimodal model, verified via their docs since the model lineup shifts often; **model name is worth re-checking if this starts failing**, since I can't yet find a way to smoke-test an authenticated edge function myself — see the standing constraint noted earlier this session), asks for `{title, category, description, daily_price}` as strict JSON (`response_format: json_object`), clamps `category` to the app's real category list and discards anything else back to `other`.
+- `AddItemScreen`: once at least one item photo is added, an **"Auto-fill with AI"** button appears below the thumbnails. Tapping it fills Title/Category/Description/Daily Price from the response — every field stays fully editable afterward, and the actual Save/Submit path is completely untouched (SAS — this only pre-fills the form, it doesn't introduce a second write path).
+- Deliberately **not automatic** — the user taps the button rather than it firing the moment a photo is added, so it can't silently overwrite something they already typed and doesn't burn an API call on every photo tap.
+
+Typecheck clean. **Completely unverified against the real Groq API** — I could deploy the function but couldn't invoke it myself (same auth constraint as always: no safe way to mint a real user session from here). First real test needs to happen on-device: add an item, take/pick a clear photo of something recognizable, tap Auto-fill, and see whether the suggested fields are actually sane.
+
+## ⚠️ Real-device testing still owed on everything from 2026-08-19
+Nothing below has been confirmed on a device yet, just verified at the DB/RPC level or by direct SQL simulation: the new dispute pick→review→publish flow, the reviews screens (item + profile-by-role), the two reputation-scoring bug fixes, the admin-charge reopen-on-refund-failure fix, the overdue-card/resolved-dispute pill+info-icon redesign, and the support-thread notification badges. Worth a dedicated pass before considering any of it done — this note exists so it doesn't get skipped just because the code shipped.
+
 ## ✅ Dispute resolution redesigned: pick a side, review, then publish (2026-08-19)
 Requested redesign of `AdminDisputesScreen`'s resolve flow: previously "Favor Renter"/"Favor Lender" were both live buttons that immediately opened a confirm dialog and sent the ruling. Now:
 1. Tap Favor Renter or Favor Lender — purely local selection, nothing sent, freely switchable to the other side any time before publishing (the non-selected button dims to show which side is currently chosen).

@@ -10,7 +10,7 @@ import { supabase } from '../services/supabase';
 import CityPicker, { type CityValue } from '../components/CityPicker';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
-import { X } from 'lucide-react-native';
+import { X, Sparkles } from 'lucide-react-native';
 
 const CATEGORIES = ['photography', 'gaming', 'camping', 'diy', 'music', 'sports', 'other'];
 const MAX_ITEM_PHOTOS = 6;
@@ -35,6 +35,7 @@ export default function AddItemScreen() {
   const [verificationPhoto, setVerificationPhoto] = useState<PhotoAsset | null>(null);
   const [itemPhotos, setItemPhotos] = useState<PhotoAsset[]>([]);
   const [loading, setLoading] = useState<'pending' | 'live' | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
 
   async function pickFromCamera(multi = false): Promise<PhotoAsset | null> {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -98,6 +99,31 @@ export default function AddItemScreen() {
     const assets = await pickFromGallery(remaining);
     if (assets.length > 0) {
       setItemPhotos((prev) => [...prev, ...assets].slice(0, MAX_ITEM_PHOTOS));
+    }
+  }
+
+  // Backlog S: suggest title/category/description/daily_price from the item's
+  // own cover photo — the user still reviews and can edit every field before
+  // saving through the normal Save path below, which is untouched by this.
+  async function handleAutoFill() {
+    if (itemPhotos.length === 0 || analyzing) return;
+    setAnalyzing(true);
+    try {
+      const cover = itemPhotos[0];
+      const { data, error } = await supabase.functions.invoke('analyze-item-photo', {
+        body: { image_base64: cover.base64, mime_type: cover.mimeType },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      if (data.title) setTitle(data.title);
+      if (data.category && CATEGORIES.includes(data.category)) setCategory(data.category);
+      if (data.description) setDescription(data.description);
+      if (data.daily_price) setDailyPrice(String(data.daily_price));
+    } catch (e: any) {
+      Alert.alert('Could not auto-fill', e.message ?? 'AI analysis failed — you can still fill in the details yourself.');
+    } finally {
+      setAnalyzing(false);
     }
   }
 
@@ -282,6 +308,14 @@ export default function AddItemScreen() {
             </ScrollView>
           )}
 
+          {itemPhotos.length > 0 && (
+            <TouchableOpacity style={styles.autoFillBtn} onPress={handleAutoFill} disabled={analyzing || loading !== null}>
+              {analyzing
+                ? <ActivityIndicator color={colors.primary} size="small" />
+                : <><Sparkles size={16} color={colors.primary} /><Text style={styles.autoFillBtnText}>Auto-fill with AI</Text></>}
+            </TouchableOpacity>
+          )}
+
           {/* ── Verification Photo ──────────────────────────────── */}
           <Text style={styles.sectionHeading}>Verification Photo</Text>
           <Text style={styles.sectionHint}>Camera only. Used for admin verification — not shown to other users.</Text>
@@ -336,6 +370,11 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   thumbRemoveText: { color: colors.text, fontSize: 10, fontWeight: '700' },
   thumbMainBadge: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(255,255,255,0.85)', alignItems: 'center' },
   thumbMainBadgeText: { fontSize: 10, fontWeight: '700', color: colors.btnText },
+  autoFillBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    height: 44, marginTop: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.primary,
+  },
+  autoFillBtnText: { color: colors.primary, fontSize: 14, fontWeight: '600' },
   cameraButton: { height: 48, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   cameraButtonText: { color: colors.text, fontSize: 15, fontWeight: '600' },
   verificationPreview: { width: '100%', height: 160, borderRadius: 8, marginTop: 8, borderWidth: 1, borderColor: colors.border },
