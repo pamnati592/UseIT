@@ -83,35 +83,56 @@ export default function AdminDisputesScreen({ navigation }: Props) {
         {
           text: 'Confirm', style: 'destructive', onPress: async () => {
             setResolvingId(transactionId);
-            try {
-              const { error } = await supabase.rpc('admin_resolve_dispute', {
-                p_transaction_id: transactionId,
-                p_favor: favor,
-                p_note: notes[transactionId]?.trim() || null,
-              });
-              if (error) throw error;
 
-              if (favor === 'renter') {
-                const { error: refundError } = await supabase.functions.invoke('refund-payment', {
-                  body: { transaction_id: transactionId, reason: 'admin_dispute_resolved' },
-                });
-                if (refundError) throw refundError;
-              } else if (damageAmount > 0) {
-                const { data: chargeResult, error: chargeError } = await supabase.functions.invoke('admin-charge', {
-                  body: { transaction_id: transactionId, amount: damageAmount, reason: 'damage' },
-                });
-                if (chargeError) throw chargeError;
-                if (chargeResult && !chargeResult.ok) {
-                  Alert.alert('Damage charge failed', 'The card on file was declined or missing — the renter has been notified in chat to arrange payment directly.');
-                }
-              }
-
-              setDisputes(prev => prev.filter(d => d.transaction_id !== transactionId));
-            } catch (e: any) {
-              Alert.alert('Error', e.message ?? 'Could not resolve the dispute.');
-            } finally {
+            // admin_resolve_dispute and the Stripe step below are not one
+            // atomic operation — if the ruling itself fails, nothing was
+            // committed, so a plain error is enough.
+            const { error } = await supabase.rpc('admin_resolve_dispute', {
+              p_transaction_id: transactionId,
+              p_favor: favor,
+              p_note: notes[transactionId]?.trim() || null,
+            });
+            if (error) {
+              Alert.alert('Error', error.message ?? 'Could not resolve the dispute.');
               setResolvingId(null);
+              return;
             }
+
+            if (favor === 'renter') {
+              const { error: refundError } = await supabase.functions.invoke('refund-payment', {
+                body: { transaction_id: transactionId, reason: 'admin_dispute_resolved' },
+              });
+              if (refundError) {
+                // The ruling is already committed (transaction cancelled, dispute
+                // resolved) — a failed refund here previously left it silently
+                // "resolved" with no money moved, and invisible in this queue
+                // forever, since admin_list_disputes only returns status =
+                // 'disputed' transactions. Reopen it instead of leaving that gap.
+                await supabase.rpc('admin_reopen_dispute', { p_transaction_id: transactionId });
+                Alert.alert(
+                  'Refund failed — dispute reopened',
+                  `The ruling could not be completed (${refundError.message ?? 'refund failed'}). This case has been reopened so you can retry once the issue is fixed.`
+                );
+                setResolvingId(null);
+                return;
+              }
+            } else if (damageAmount > 0) {
+              // Favor-lender stands on its own regardless of the damage charge —
+              // the lender keeps their payment either way — so a failed charge
+              // doesn't need to reopen the dispute, just notify the admin. The
+              // renter is separately notified in chat (see admin-charge).
+              const { data: chargeResult, error: chargeError } = await supabase.functions.invoke('admin-charge', {
+                body: { transaction_id: transactionId, amount: damageAmount, reason: 'damage' },
+              });
+              if (chargeError) {
+                Alert.alert('Damage charge failed', chargeError.message ?? 'Could not process the charge.');
+              } else if (chargeResult && !chargeResult.ok) {
+                Alert.alert('Damage charge failed', 'The card on file was declined or missing — the renter has been notified in chat to arrange payment directly.');
+              }
+            }
+
+            setDisputes(prev => prev.filter(d => d.transaction_id !== transactionId));
+            setResolvingId(null);
           },
         },
       ]
