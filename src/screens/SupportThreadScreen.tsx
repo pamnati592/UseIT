@@ -38,6 +38,7 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [messages, setMessages] = useState<SupportMessage[]>([]);
+  const [senderNames, setSenderNames] = useState<Record<string, string>>({});
   const [text, setText] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [threadUserId, setThreadUserId] = useState<string | null>(null);
@@ -48,11 +49,29 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
   const isFocusedRef = useRef(isFocused);
   isFocusedRef.current = isFocused;
   const isOwnerRef = useRef(false);
+  // Anyone who reaches this screen who isn't the thread's own user must be an
+  // admin — RLS only allows owner-or-admin. This is the shared-inbox case:
+  // more than one admin can be in the same thread, and without showing real
+  // names, a colleague's reply and the actual user's message both render as
+  // an identical anonymous "them" bubble (found while thinking through what
+  // happens with multiple admins, 2026-08-19).
+  const isAdminViewerRef = useRef(false);
 
   async function markRead() {
-    if (!isOwnerRef.current) return;
-    await supabase.from('support_threads').update({ user_last_read_at: new Date().toISOString() }).eq('id', threadId);
+    const now = new Date().toISOString();
+    if (isOwnerRef.current) {
+      await supabase.from('support_threads').update({ user_last_read_at: now }).eq('id', threadId);
+    } else if (isAdminViewerRef.current) {
+      await supabase.from('support_threads').update({ admin_last_read_at: now }).eq('id', threadId);
+    } else {
+      return;
+    }
     chatBus.notify();
+  }
+
+  async function nameFor(userId: string): Promise<string> {
+    const { data } = await supabase.from('profiles').select('full_name').eq('id', userId).single();
+    return data?.full_name ?? 'Unknown';
   }
 
   useEffect(() => {
@@ -66,15 +85,26 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
 
       const [{ data: thread }, { data }] = await Promise.all([
         supabase.from('support_threads').select('user_id').eq('id', threadId).single(),
-        supabase.from('support_messages').select('id, sender_id, content, created_at').eq('thread_id', threadId).order('created_at', { ascending: false }),
+        supabase
+          .from('support_messages')
+          .select('id, sender_id, content, created_at, sender:profiles!support_messages_sender_id_fkey(full_name)')
+          .eq('thread_id', threadId)
+          .order('created_at', { ascending: false }),
       ]);
       if (!mounted) return;
 
       if (thread) {
         setThreadUserId(thread.user_id);
         isOwnerRef.current = thread.user_id === user.id;
+        isAdminViewerRef.current = thread.user_id !== user.id;
       }
-      setMessages((data as SupportMessage[]) ?? []);
+      const rows = (data as any[]) ?? [];
+      setMessages(rows.map(r => ({ id: r.id, sender_id: r.sender_id, content: r.content, created_at: r.created_at })));
+      setSenderNames(prev => {
+        const next = { ...prev };
+        rows.forEach(r => { next[r.sender_id] = r.sender?.full_name ?? 'Unknown'; });
+        return next;
+      });
       setLoading(false);
       markRead();
 
@@ -87,6 +117,11 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
             if (!mounted) return;
             const newMsg = payload.new as SupportMessage;
             setMessages((prev) => prev.some(m => m.id === newMsg.id) ? prev : [newMsg, ...prev]);
+            setSenderNames(prev => {
+              if (prev[newMsg.sender_id] || newMsg.sender_id === myId) return prev;
+              nameFor(newMsg.sender_id).then(name => setSenderNames(p => ({ ...p, [newMsg.sender_id]: name })));
+              return prev;
+            });
             // A message arriving while this screen is already open and focused
             // must not sit "unread" until the user leaves and comes back —
             // same self-badge fix already applied to ChatRoomScreen.
@@ -129,7 +164,7 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
       await supabase.from('support_threads').update({
         last_message: content,
         last_message_at: now,
-        ...(isOwner ? { user_last_read_at: now } : {}),
+        ...(isOwner ? { user_last_read_at: now } : { admin_last_read_at: now }),
       }).eq('id', threadId);
       chatBus.notify();
     }
@@ -142,8 +177,14 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
 
   function renderItem({ item: msg }: ListRenderItemInfo<SupportMessage>) {
     const isMe = msg.sender_id === currentUserId;
+    // Only shown to admin viewers — a user's own view of their thread never
+    // needed to distinguish senders (it's just "me" and "UseIT"), but an
+    // admin sharing this inbox with colleagues needs to tell "the real user"
+    // apart from "another admin already replied."
+    const showName = isAdminViewerRef.current && !isMe;
     return (
       <View style={[styles.bubbleWrapper, isMe ? styles.bubbleWrapperMe : styles.bubbleWrapperThem]}>
+        {showName && <Text style={styles.senderName}>{senderNames[msg.sender_id] ?? '…'}</Text>}
         <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
           <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>{msg.content}</Text>
         </View>
@@ -221,6 +262,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   bubbleWrapper: { maxWidth: '80%', marginBottom: 8 },
   bubbleWrapperMe: { alignSelf: 'flex-end', alignItems: 'flex-end' },
   bubbleWrapperThem: { alignSelf: 'flex-start', alignItems: 'flex-start' },
+  senderName: { fontSize: 11, fontWeight: '600', color: colors.textFaint, marginBottom: 2, marginLeft: 4 },
   bubble: { borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10 },
   bubbleMe: { backgroundColor: colors.btn, borderBottomRightRadius: 4 },
   bubbleThem: { backgroundColor: colors.card, borderBottomLeftRadius: 4, borderWidth: 1, borderColor: colors.border },

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
@@ -7,6 +7,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
 import { useConversations, type ConversationRow, type SupportThreadRow } from '../contexts/ConversationsContext';
+import { supabase } from '../services/supabase';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { MessageCircle, Package, Key, ShieldCheck } from 'lucide-react-native';
@@ -25,6 +26,7 @@ export default function ChatsScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [roleTab, setRoleTab] = useState<RoleTab>('renting');
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // All conversation data and unread state comes from the single shared
   // context (ConversationsProvider, mounted once at the app root) — the same
@@ -42,6 +44,12 @@ export default function ChatsScreen({ navigation }: Props) {
   // anything the realtime subscription might have missed (socket drop,
   // app backgrounded) by re-syncing whenever this screen regains focus.
   useFocusEffect(useCallback(() => { reload(); }, [reload]));
+
+  useEffect(() => {
+    if (!currentUserId) return;
+    supabase.from('profiles').select('is_admin').eq('id', currentUserId).single()
+      .then(({ data }) => setIsAdmin(!!data?.is_admin));
+  }, [currentUserId]);
 
   function otherName(conv: ConversationRow): string {
     if (!currentUserId) return '';
@@ -87,7 +95,17 @@ export default function ChatsScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.header}>Chats</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.header}>Chats</Text>
+        {isAdmin && (
+          <TouchableOpacity
+            style={styles.supportInboxBtn}
+            onPress={() => (navigation as any).getParent()?.navigate('Profile', { screen: 'AdminSupportInbox' })}
+          >
+            <ShieldCheck size={22} color={colors.primary} />
+          </TouchableOpacity>
+        )}
+      </View>
 
       <View style={styles.roleTabBar}>
         <TouchableOpacity
@@ -226,10 +244,12 @@ export default function ChatsScreen({ navigation }: Props) {
 
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    fontSize: 24, fontWeight: 'bold', color: colors.text,
+  headerRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12,
   },
+  header: { fontSize: 24, fontWeight: 'bold', color: colors.text },
+  supportInboxBtn: { padding: 4 },
   roleTabBar: {
     flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border,
     backgroundColor: colors.bg,
