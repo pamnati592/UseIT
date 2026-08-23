@@ -14,10 +14,7 @@ import type { ThemeColors } from '../theme/colors';
 import { MessageCircle, Package, Key, ShieldCheck } from 'lucide-react-native';
 
 type RoleTab = 'renting' | 'lending';
-
-type FeedRow =
-  | { kind: 'conversation'; key: string; conv: ConversationRow }
-  | { kind: 'support'; key: string; thread: SupportThreadRow };
+type ViewTab = 'chats' | 'support';
 
 type AdminThreadRow = {
   id: string;
@@ -39,6 +36,12 @@ export default function ChatsScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [roleTab, setRoleTab] = useState<RoleTab>('renting');
+  // Requested 2026-08-23: UseIT threads get their own section for every
+  // user, not just admins — previously they were folded into the same list
+  // as person-to-person conversations for everyone but the admin inbox view.
+  // Unrelated to Admin Mode below: that's for answering AS UseIT
+  // platform-wide, this is just how a single user sees their own threads.
+  const [viewTab, setViewTab] = useState<ViewTab>('chats');
   const { isAdmin, adminModeActive, enterAdminMode, exitAdminMode } = useAdminMode();
   const [adminThreads, setAdminThreads] = useState<AdminThreadRow[]>([]);
   const [adminThreadsLoading, setAdminThreadsLoading] = useState(false);
@@ -51,7 +54,6 @@ export default function ChatsScreen({ navigation }: Props) {
     currentUserId, loading,
     rentingConversations, lendingConversations,
     rentingSupportThreads, lendingSupportThreads,
-    rentingUnreadCount, lendingUnreadCount,
     isUnread, isSupportThreadUnread, reload,
   } = useConversations();
 
@@ -66,6 +68,8 @@ export default function ChatsScreen({ navigation }: Props) {
     if (!error) setAdminThreads((data as AdminThreadRow[]) ?? []);
     setAdminThreadsLoading(false);
   }, []);
+
+  const showAdminInbox = isAdmin && adminModeActive;
 
   // Admin Mode is a whole-app state (see AdminModeContext) — this screen is
   // the one thing it actually changes: while active, Chats shows every
@@ -93,7 +97,6 @@ export default function ChatsScreen({ navigation }: Props) {
     return new Date(t.last_message_at) > new Date(t.admin_last_read_at);
   }
 
-  const showAdminInbox = isAdmin && adminModeActive;
   const adminRole: 'renter' | 'lender' = roleTab === 'renting' ? 'renter' : 'lender';
   const visibleAdminThreads = adminThreads.filter(t => t.role === adminRole);
   const adminRenterUnread = adminThreads.filter(t => t.role === 'renter' && isAdminThreadUnread(t)).length;
@@ -102,21 +105,33 @@ export default function ChatsScreen({ navigation }: Props) {
   const visibleConvs = roleTab === 'renting' ? rentingConversations : lendingConversations;
   const visibleThreads = roleTab === 'renting' ? rentingSupportThreads : lendingSupportThreads;
 
-  // Support threads are folded into the same list as real conversations,
-  // sorted by whichever actually had activity most recently — a UseIT reply
-  // competes for attention the same way a message from the other party does,
-  // rather than living in a separate, easy-to-forget place.
-  const feedRows: FeedRow[] = useMemo(() => {
-    const rows: FeedRow[] = [
-      ...visibleConvs.map((conv): FeedRow => ({ kind: 'conversation', key: `c-${conv.id}`, conv })),
-      ...visibleThreads.map((thread): FeedRow => ({ kind: 'support', key: `s-${thread.id}`, thread })),
-    ];
-    const activityOf = (row: FeedRow) => {
-      const iso = row.kind === 'conversation' ? row.conv.last_message_at : row.thread.lastMessageAt;
-      return iso ? new Date(iso).getTime() : 0;
-    };
-    return rows.sort((a, b) => activityOf(b) - activityOf(a));
-  }, [visibleConvs, visibleThreads]);
+  // Conversations and support threads no longer share one feed, so their
+  // unread badges are computed separately too — each view (Chats / UseIT)
+  // only ever counts its own kind.
+  const rentingConvUnread = useMemo(
+    () => rentingConversations.filter(isUnread).length,
+    [rentingConversations, isUnread]
+  );
+  const lendingConvUnread = useMemo(
+    () => lendingConversations.filter(isUnread).length,
+    [lendingConversations, isUnread]
+  );
+  const rentingSupportUnread = useMemo(
+    () => rentingSupportThreads.filter(isSupportThreadUnread).length,
+    [rentingSupportThreads, isSupportThreadUnread]
+  );
+  const lendingSupportUnread = useMemo(
+    () => lendingSupportThreads.filter(isSupportThreadUnread).length,
+    [lendingSupportThreads, isSupportThreadUnread]
+  );
+  const chatsUnreadTotal = rentingConvUnread + lendingConvUnread;
+  const supportUnreadTotal = rentingSupportUnread + lendingSupportUnread;
+
+  function roleTabBadgeCount(role: RoleTab): number {
+    if (showAdminInbox) return role === 'renting' ? adminRenterUnread : adminLenderUnread;
+    if (viewTab === 'support') return role === 'renting' ? rentingSupportUnread : lendingSupportUnread;
+    return role === 'renting' ? rentingConvUnread : lendingConvUnread;
+  }
 
   function formatTime(iso: string | null): string {
     if (!iso) return '';
@@ -167,6 +182,86 @@ export default function ChatsScreen({ navigation }: Props) {
     );
   }
 
+  function renderSupportItem({ item: thread }: { item: SupportThreadRow }) {
+    const unread = isSupportThreadUnread(thread);
+    return (
+      <TouchableOpacity
+        style={styles.row}
+        onPress={() => navigation.navigate('SupportThread', {
+          threadId: thread.id,
+          title: `UseIT · ${thread.itemTitle}`,
+        })}
+      >
+        <View style={[styles.avatar, styles.supportAvatar]}>
+          <ShieldCheck size={22} color={colors.primary} />
+          {unread && <View style={styles.avatarDot} />}
+        </View>
+        <View style={styles.rowContent}>
+          <View style={styles.rowTop}>
+            <Text style={[styles.userName, unread && styles.userNameUnread]} numberOfLines={1}>
+              UseIT Support
+            </Text>
+            <Text style={[styles.time, unread && styles.timeUnread]}>
+              {formatTime(thread.lastMessageAt)}
+            </Text>
+          </View>
+          <View style={styles.itemTitleRow}>
+            <Package size={12} color={colors.textMuted} />
+            <Text style={styles.itemTitle} numberOfLines={1}>{thread.itemTitle}</Text>
+          </View>
+          <Text style={[styles.lastMessage, unread && styles.lastMessageUnread]} numberOfLines={1}>
+            {thread.lastMessage ?? 'No messages yet'}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
+  function renderConversationItem({ item: conv }: { item: ConversationRow }) {
+    const name = otherName(conv);
+    const unread = isUnread(conv);
+    return (
+      <TouchableOpacity
+        style={styles.row}
+        onPress={() => {
+          const myLastRead = conv.renter_id === currentUserId
+            ? conv.renter_last_read_at
+            : conv.lender_last_read_at;
+          navigation.navigate('ChatRoom', {
+            conversationId: conv.id,
+            itemTitle: conv.item_title,
+            otherUserName: name,
+            // Pass a fallback epoch timestamp when myLastRead is null (never opened this chat)
+            // so Badge Jump still fires and highlights the first unseen message.
+            ...(unread ? { highlightAfterTimestamp: myLastRead ?? new Date(0).toISOString() } : {}),
+          });
+        }}
+      >
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text>
+          {unread && <View style={styles.avatarDot} />}
+        </View>
+        <View style={styles.rowContent}>
+          <View style={styles.rowTop}>
+            <Text style={[styles.userName, unread && styles.userNameUnread]} numberOfLines={1}>
+              {name}
+            </Text>
+            <Text style={[styles.time, unread && styles.timeUnread]}>
+              {formatTime(conv.last_message_at)}
+            </Text>
+          </View>
+          <View style={styles.itemTitleRow}>
+            <Package size={12} color={colors.textMuted} />
+            <Text style={styles.itemTitle} numberOfLines={1}>{conv.item_title}</Text>
+          </View>
+          <Text style={[styles.lastMessage, unread && styles.lastMessageUnread]} numberOfLines={1}>
+            {conv.last_message ?? 'No messages yet'}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.headerRow}>
@@ -181,6 +276,35 @@ export default function ChatsScreen({ navigation }: Props) {
         )}
       </View>
 
+      {!showAdminInbox && (
+        <View style={styles.viewTabBar}>
+          <TouchableOpacity
+            style={[styles.viewTab, viewTab === 'chats' && styles.viewTabActive]}
+            onPress={() => setViewTab('chats')}
+          >
+            <MessageCircle size={15} color={viewTab === 'chats' ? colors.btnText : colors.textMuted} />
+            <Text style={[styles.viewTabText, viewTab === 'chats' && styles.viewTabTextActive]}>Chats</Text>
+            {chatsUnreadTotal > 0 && (
+              <View style={styles.viewTabBadge}>
+                <Text style={styles.viewTabBadgeText}>{chatsUnreadTotal}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.viewTab, viewTab === 'support' && styles.viewTabActive]}
+            onPress={() => setViewTab('support')}
+          >
+            <ShieldCheck size={15} color={viewTab === 'support' ? colors.btnText : colors.textMuted} />
+            <Text style={[styles.viewTabText, viewTab === 'support' && styles.viewTabTextActive]}>UseIT</Text>
+            {supportUnreadTotal > 0 && (
+              <View style={styles.viewTabBadge}>
+                <Text style={styles.viewTabBadgeText}>{supportUnreadTotal}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+
       <View style={styles.roleTabBar}>
         <TouchableOpacity
           style={[styles.roleTab, roleTab === 'renting' && styles.roleTabActive]}
@@ -191,9 +315,9 @@ export default function ChatsScreen({ navigation }: Props) {
             <Text style={[styles.roleTabText, roleTab === 'renting' && styles.roleTabTextActive]}>
               {showAdminInbox ? 'Renters' : 'Renting'}
             </Text>
-            {(showAdminInbox ? adminRenterUnread : rentingUnreadCount) > 0 && (
+            {roleTabBadgeCount('renting') > 0 && (
               <View style={styles.roleTabBadge}>
-                <Text style={styles.roleTabBadgeText}>{showAdminInbox ? adminRenterUnread : rentingUnreadCount}</Text>
+                <Text style={styles.roleTabBadgeText}>{roleTabBadgeCount('renting')}</Text>
               </View>
             )}
           </View>
@@ -207,9 +331,9 @@ export default function ChatsScreen({ navigation }: Props) {
             <Text style={[styles.roleTabText, roleTab === 'lending' && styles.roleTabTextActive]}>
               {showAdminInbox ? 'Lenders' : 'Lending'}
             </Text>
-            {(showAdminInbox ? adminLenderUnread : lendingUnreadCount) > 0 && (
+            {roleTabBadgeCount('lending') > 0 && (
               <View style={styles.roleTabBadge}>
-                <Text style={styles.roleTabBadgeText}>{showAdminInbox ? adminLenderUnread : lendingUnreadCount}</Text>
+                <Text style={styles.roleTabBadgeText}>{roleTabBadgeCount('lending')}</Text>
               </View>
             )}
           </View>
@@ -235,7 +359,24 @@ export default function ChatsScreen({ navigation }: Props) {
             ItemSeparatorComponent={() => <View style={styles.separator} />}
           />
         )
-      ) : feedRows.length === 0 ? (
+      ) : viewTab === 'support' ? (
+        visibleThreads.length === 0 ? (
+          <View style={styles.empty}>
+            <ShieldCheck size={48} color={colors.textFaint} strokeWidth={1.5} />
+            <Text style={styles.emptyTitle}>No UseIT conversations</Text>
+            <Text style={styles.emptySubtext}>
+              Tap "Contact UseIT" from a rental to start one
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={visibleThreads}
+            keyExtractor={(t) => t.id}
+            renderItem={renderSupportItem}
+            ItemSeparatorComponent={() => <View style={styles.separator} />}
+          />
+        )
+      ) : visibleConvs.length === 0 ? (
         <View style={styles.empty}>
           <MessageCircle size={48} color={colors.textFaint} strokeWidth={1.5} />
           <Text style={styles.emptyTitle}>
@@ -249,90 +390,10 @@ export default function ChatsScreen({ navigation }: Props) {
         </View>
       ) : (
         <FlatList
-          data={feedRows}
-          keyExtractor={(row) => row.key}
+          data={visibleConvs}
+          keyExtractor={(c) => c.id}
+          renderItem={renderConversationItem}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
-          renderItem={({ item: row }) => {
-            if (row.kind === 'support') {
-              const thread = row.thread;
-              const unread = isSupportThreadUnread(thread);
-              return (
-                <TouchableOpacity
-                  style={styles.row}
-                  onPress={() => navigation.navigate('SupportThread', {
-                    threadId: thread.id,
-                    title: `UseIT · ${thread.itemTitle}`,
-                  })}
-                >
-                  <View style={[styles.avatar, styles.supportAvatar]}>
-                    <ShieldCheck size={22} color={colors.primary} />
-                    {unread && <View style={styles.avatarDot} />}
-                  </View>
-                  <View style={styles.rowContent}>
-                    <View style={styles.rowTop}>
-                      <Text style={[styles.userName, unread && styles.userNameUnread]} numberOfLines={1}>
-                        UseIT Support
-                      </Text>
-                      <Text style={[styles.time, unread && styles.timeUnread]}>
-                        {formatTime(thread.lastMessageAt)}
-                      </Text>
-                    </View>
-                    <View style={styles.itemTitleRow}>
-                      <Package size={12} color={colors.textMuted} />
-                      <Text style={styles.itemTitle} numberOfLines={1}>{thread.itemTitle}</Text>
-                    </View>
-                    <Text style={[styles.lastMessage, unread && styles.lastMessageUnread]} numberOfLines={1}>
-                      {thread.lastMessage ?? 'No messages yet'}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            }
-
-            const conv = row.conv;
-            const name = otherName(conv);
-            const unread = isUnread(conv);
-            return (
-              <TouchableOpacity
-                style={styles.row}
-                onPress={() => {
-                  const myLastRead = conv.renter_id === currentUserId
-                    ? conv.renter_last_read_at
-                    : conv.lender_last_read_at;
-                  navigation.navigate('ChatRoom', {
-                    conversationId: conv.id,
-                    itemTitle: conv.item_title,
-                    otherUserName: name,
-                    // Pass a fallback epoch timestamp when myLastRead is null (never opened this chat)
-                    // so Badge Jump still fires and highlights the first unseen message.
-                    ...(unread ? { highlightAfterTimestamp: myLastRead ?? new Date(0).toISOString() } : {}),
-                  });
-                }}
-              >
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text>
-                  {unread && <View style={styles.avatarDot} />}
-                </View>
-                <View style={styles.rowContent}>
-                  <View style={styles.rowTop}>
-                    <Text style={[styles.userName, unread && styles.userNameUnread]} numberOfLines={1}>
-                      {name}
-                    </Text>
-                    <Text style={[styles.time, unread && styles.timeUnread]}>
-                      {formatTime(conv.last_message_at)}
-                    </Text>
-                  </View>
-                  <View style={styles.itemTitleRow}>
-                    <Package size={12} color={colors.textMuted} />
-                    <Text style={styles.itemTitle} numberOfLines={1}>{conv.item_title}</Text>
-                  </View>
-                  <Text style={[styles.lastMessage, unread && styles.lastMessageUnread]} numberOfLines={1}>
-                    {conv.last_message ?? 'No messages yet'}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          }}
         />
       )}
     </SafeAreaView>
@@ -348,6 +409,23 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   header: { fontSize: 24, fontWeight: 'bold', color: colors.text },
   supportInboxBtn: { padding: 4, borderRadius: 8 },
   supportInboxBtnActive: { backgroundColor: colors.primary, padding: 4 },
+  viewTabBar: {
+    flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 10, gap: 8,
+  },
+  viewTab: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16,
+    backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
+  },
+  viewTabActive: { backgroundColor: colors.btn, borderColor: colors.btn },
+  viewTabText: { fontSize: 13, fontWeight: '600', color: colors.textMuted },
+  viewTabTextActive: { color: colors.btnText },
+  viewTabBadge: {
+    backgroundColor: colors.warning, borderRadius: 10,
+    minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  viewTabBadgeText: { color: colors.btnText, fontSize: 10, fontWeight: '800' },
   roleTabBar: {
     flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border,
     backgroundColor: colors.bg,
