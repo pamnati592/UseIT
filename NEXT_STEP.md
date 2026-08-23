@@ -26,19 +26,15 @@ Ori's direction: stop building for "demo," build for **real public release** —
 8. **Free Apple developer account** (7-day build expiry, no push entitlement) — App Store distribution needs a paid Apple Developer Program membership ($99/yr) and Google Play Developer account ($25 one-time). **Ori's own accounts to create — not buildable from here.**
 9. Backlog **AA** (block/report user) and **AB** (verification photo in a public bucket) matter more now — real user-safety gaps for a public app.
 
-## 🚧 In progress: Stripe Connect payouts + fee discount
-Started 2026-08-19, not finished. Plan: real Express-account payouts for lenders via destination charges, finally applying the Trust Score fee discount (spec 4.12) at the same time since both touch the same payment code.
+## ✅ Stripe Connect payouts + fee discount, first version shipped (2026-08-19)
+Real Express-account payouts for lenders via destination charges, plus the Trust Score fee discount (spec 4.12) applied for the first time — both land in `create-payment-intent` together since they share the same math.
 
-**Done so far:**
-- `profiles.stripe_connect_account_id` / `stripe_connect_charges_enabled` / `stripe_connect_details_submitted` (migration `20260819_stripe_connect_fields.sql`).
-- `connect-onboarding` edge function — creates/reuses an Express account (capability: `transfers` only; card acceptance stays on the platform's own PaymentIntent) and returns a Stripe-hosted Account Link URL.
-- `refresh-connect-status` edge function — re-fetches real status from Stripe and updates the profile. Called on the app's own deep-link return (`swipeandrent://connect-return`) rather than a webhook — a webhook needs a signing secret configured in the Stripe dashboard, which isn't set up. **Trade-off:** status changes the user causes entirely outside the app (rare for onboarding) won't be caught until they reopen the app.
-
-**Still to do:**
-- `create-payment-intent`: require the lender's `stripe_connect_charges_enabled = true` before a rental can be paid; add `transfer_data.destination` + `application_fee_amount` using the existing trust-score tiers.
-- `refund-payment`: add `reverse_transfer: true` — with destination charges, a refund must also pull back the transferred funds from the lender's connected account, or the platform eats the cost.
-- Client: a "Set Up Payouts" section on `ProfileScreen` for lenders, opening the onboarding URL via `expo-web-browser`, plus the deep-link handler that calls `refresh-connect-status` on return.
-- Neither edge function has been invoked yet — same standing constraint as everywhere else this session, no way to mint a real authenticated session from here. First real test needs to happen on-device.
+- `profiles.stripe_connect_account_id` / `stripe_connect_charges_enabled` / `stripe_connect_details_submitted`. `connect-onboarding` creates/reuses an Express account (capability: `transfers` only — card acceptance stays on the platform's own PaymentIntent) and returns a Stripe-hosted Account Link. `refresh-connect-status` re-fetches real status on the app's own deep-link return (`swipeandrent://connect-return`, via `expo-web-browser`'s `openAuthSessionAsync` — no app-wide Linking listener needed) rather than a webhook, since no signing secret is configured in the Stripe dashboard. **Trade-off:** a status change the user causes entirely outside the app won't be caught until they reopen it.
+- `create-payment-intent` (rental branch) now **blocks payment entirely** if the lender hasn't finished onboarding (`stripe_connect_charges_enabled` false) — a real, deliberate behavior change: **no rental payment will succeed until its lender has set up payouts.** `ProfileScreen` has the new "Set Up Payouts" card for this.
+- Fee math: `BASE_FEE_PERCENT = 5` per side (10% combined at zero discount) — **a placeholder, spec 4.12 never states a base rate**, worth real business input before this handles real money. Each side's own trust tier discounts their own share (renter's `renter_score`, lender's `lender_score`) — a renter pays `base_price + their_fee`; the lender's fee comes out of their transfer; both captured in one `application_fee_amount` (Stripe's only lever for this on a destination charge). The response includes a `fee_breakdown` object — **not yet surfaced in any payment-screen UI**, spec 4.10 wants it shown before confirmation.
+- `refund-payment` now passes `reverse_transfer: true` + `refund_application_fee: true` so a refund actually claws back the transferred lender share and the platform's fee too, not just what's left in the platform's own balance. Harmless no-op on older payment intents with no associated transfer.
+- **Scope note:** only rentals go through Connect right now, not purchases (the Buy flow) — a purchase's seller has the identical never-gets-paid problem, just not fixed in this pass.
+- **Not yet tested against the real Stripe API** — same standing constraint as always, no way to mint a real authenticated session from here. **Both Ori and Nati need to complete "Set Up Payouts" from their Profile before any more rental payments can be tested** — this is the first real thing to try.
 
 ## ⚠️ Testing owed on everything from 2026-08-19 (nothing below confirmed on device except where noted)
 - Dispute resolution's pick-a-side → review → publish redesign (`AdminDisputesScreen`)

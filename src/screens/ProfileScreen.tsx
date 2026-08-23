@@ -9,6 +9,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
+import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '../services/supabase';
 import { TEST_ACCOUNTS } from '../config/testAccounts';
 import type { Item } from '../types/item';
@@ -16,7 +17,7 @@ import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
 import {
-  ChevronRight, MapPin, Pencil, Package, ClipboardList, Heart, Clock, Repeat, Moon, Sun, LogOut, ShieldCheck,
+  ChevronRight, MapPin, Pencil, Package, ClipboardList, Heart, Clock, Repeat, Moon, Sun, LogOut, ShieldCheck, Wallet, CircleCheck,
 } from 'lucide-react-native';
 
 type Nav = NativeStackNavigationProp<ProfileStackParamList, 'ProfileMain'>;
@@ -54,6 +55,9 @@ export default function ProfileScreen() {
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [items, setItems]             = useState<Item[]>([]);
   const [isAdmin, setIsAdmin]         = useState(false);
+  const [chargesEnabled, setChargesEnabled] = useState(false);
+  const [detailsSubmitted, setDetailsSubmitted] = useState(false);
+  const [payoutsLoading, setPayoutsLoading] = useState(false);
 
   const activeLabel = TEST_ACCOUNTS.find(a => a.email === userEmail)?.label ?? null;
 
@@ -66,7 +70,7 @@ export default function ProfileScreen() {
       setUserEmail(user.email ?? null);
 
       const [profileRes, itemsRes] = await Promise.all([
-        supabase.from('profiles').select('full_name, city, lender_score, renter_score, avatar_url, is_admin').eq('id', user.id).single(),
+        supabase.from('profiles').select('full_name, city, lender_score, renter_score, avatar_url, is_admin, stripe_connect_charges_enabled, stripe_connect_details_submitted').eq('id', user.id).single(),
         supabase.from('items')
           .select('id, owner_id, title, description, daily_price, sale_price, category, city, photos')
           .eq('owner_id', user.id)
@@ -82,6 +86,8 @@ export default function ProfileScreen() {
         setRenterScore((profileRes.data as any).renter_score ?? null);
         setAvatarUrl((profileRes.data as any).avatar_url ?? null);
         setIsAdmin((profileRes.data as any).is_admin ?? false);
+        setChargesEnabled((profileRes.data as any).stripe_connect_charges_enabled ?? false);
+        setDetailsSubmitted((profileRes.data as any).stripe_connect_details_submitted ?? false);
       }
       if (itemsRes.data) setItems(itemsRes.data as Item[]);
       setLoading(false);
@@ -190,6 +196,33 @@ export default function ProfileScreen() {
     }
   }
 
+  // Real payouts (spec 4.10) — a rental can't be paid at all until its
+  // lender completes this (create-payment-intent checks
+  // stripe_connect_charges_enabled server-side). Uses openAuthSessionAsync
+  // rather than a manual deep-link listener: it resolves this promise
+  // itself once Stripe redirects to connect-return, no app-wide Linking
+  // config needed for a single one-off flow like this.
+  async function handleSetupPayouts() {
+    setPayoutsLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('connect-onboarding');
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      await WebBrowser.openAuthSessionAsync(data.url, 'swipeandrent://connect-return');
+
+      const { data: status, error: statusError } = await supabase.functions.invoke('refresh-connect-status');
+      if (!statusError && status) {
+        setChargesEnabled(!!status.charges_enabled);
+        setDetailsSubmitted(!!status.details_submitted);
+      }
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Could not open payout setup.');
+    } finally {
+      setPayoutsLoading(false);
+    }
+  }
+
   function scoreLabel(score: number | null): string {
     if (score === null || score === 0) return '—';
     return score.toFixed(1);
@@ -286,6 +319,38 @@ export default function ProfileScreen() {
                 <Text style={styles.scoreValue}>{scoreLabel(renterScore)}</Text>
                 <Text style={styles.scoreLabel}>Renter</Text>
               </TouchableOpacity>
+            </View>
+
+            {/* Payout setup — a rental literally can't be paid until this is
+                done, since create-payment-intent now requires the lender's
+                Connect account to be charges_enabled. */}
+            <View style={styles.payoutCard}>
+              {chargesEnabled ? (
+                <View style={styles.payoutRow}>
+                  <CircleCheck size={20} color={colors.success} />
+                  <Text style={styles.payoutText}>Payouts are set up — you can get paid when you rent out items</Text>
+                </View>
+              ) : (
+                <>
+                  <View style={styles.payoutRow}>
+                    <Wallet size={20} color={colors.primary} />
+                    <Text style={styles.payoutText}>
+                      {detailsSubmitted
+                        ? "Stripe is still reviewing your payout details"
+                        : "Set up payouts to get paid when someone rents your items"}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.payoutBtn, payoutsLoading && styles.payoutBtnDisabled]}
+                    onPress={handleSetupPayouts}
+                    disabled={payoutsLoading}
+                  >
+                    {payoutsLoading
+                      ? <ActivityIndicator color={colors.btnText} size="small" />
+                      : <Text style={styles.payoutBtnText}>{detailsSubmitted ? 'Check Again' : 'Set Up Payouts'}</Text>}
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
 
             {/* Listings heading */}
@@ -443,6 +508,19 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   scoreLabel: { fontSize: 12, color: colors.textFaint, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 },
   scoreDivider: { width: 1, height: 36, backgroundColor: colors.card },
 
+  payoutCard: {
+    marginHorizontal: 20, marginBottom: 20, padding: 14, gap: 10,
+    backgroundColor: colors.surface, borderRadius: 14,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  payoutRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  payoutText: { flex: 1, fontSize: 13.5, color: colors.text, lineHeight: 19 },
+  payoutBtn: {
+    height: 42, borderRadius: 10, backgroundColor: colors.btn,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  payoutBtnDisabled: { opacity: 0.6 },
+  payoutBtnText: { color: colors.btnText, fontSize: 14, fontWeight: '700' },
   sectionTitle: {
     fontSize: 11, fontWeight: '600', color: colors.textFaint,
     letterSpacing: 1, paddingHorizontal: 20, marginBottom: 12,

@@ -104,9 +104,16 @@ serve(async (req) => {
 
     let stripeRefundId: string | null = null;
     if (percentage > 0) {
+      // reverse_transfer/refund_application_fee only matter for a payment that
+      // actually used Connect (transfer_data.destination) — harmless no-ops on
+      // an older payment intent with no associated transfer. Without these, a
+      // "full refund" would still leave the lender's already-transferred share
+      // and the platform's fee both unrecovered, i.e. not actually a full refund.
       const refund = await stripe.refunds.create({
         payment_intent: tx.stripe_payment_intent_id,
         amount,
+        reverse_transfer: true,
+        refund_application_fee: true,
       });
       stripeRefundId = refund.id;
     }

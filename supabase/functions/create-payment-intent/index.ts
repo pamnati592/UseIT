@@ -12,6 +12,21 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Spec 4.12's Trust Score fee tiers, finally actually applied here — until
+// now lender_score/renter_score computed and displayed a discount that was
+// never charged. BASE_FEE_PERCENT is a placeholder: the spec says the fee
+// is "dynamically reduced" but never states a base rate, so this is a
+// deliberate guess (5% per side, so 10% combined at zero discount) worth
+// revisiting with real business input before this goes live for money.
+const BASE_FEE_PERCENT = 5;
+
+function feeDiscountFor(score: number): number {
+  if (score >= 4.5) return 0.30;
+  if (score >= 4.0) return 0.20;
+  if (score >= 3.0) return 0.10;
+  return 0;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -65,12 +80,15 @@ serve(async (req) => {
     let description: string;
     let metadata: Record<string, string>;
     let isRental = false;
+    let connectAccountId: string | null = null;
+    let applicationFeeAgorot = 0;
+    let feeBreakdown: Record<string, number> | null = null;
 
     if (transaction_id) {
       // Fetch transaction and verify the caller is the renter
       const { data: tx, error: txError } = await supabase
         .from('transactions')
-        .select('id, renter_id, total_price, status, items(title)')
+        .select('id, renter_id, lender_id, total_price, status, items(title)')
         .eq('id', transaction_id)
         .single();
 
@@ -83,7 +101,45 @@ serve(async (req) => {
       if (tx.status !== 'approved') {
         return new Response(JSON.stringify({ error: 'Transaction is not approved' }), { status: 400, headers: corsHeaders });
       }
-      amount = Math.round(tx.total_price * 100);
+
+      // Service role: bookkeeping reads across both parties' profiles, not a
+      // user action gated by the caller's own RLS.
+      const [{ data: renterProfile }, { data: lenderProfile }] = await Promise.all([
+        admin.from('profiles').select('renter_score').eq('id', tx.renter_id).single(),
+        admin.from('profiles').select('lender_score, stripe_connect_account_id, stripe_connect_charges_enabled').eq('id', tx.lender_id).single(),
+      ]);
+
+      if (!lenderProfile?.stripe_connect_charges_enabled || !lenderProfile.stripe_connect_account_id) {
+        return new Response(
+          JSON.stringify({ error: "This item's lender hasn't finished setting up payouts yet. Ask them to complete Stripe onboarding in their Profile before you pay." }),
+          { status: 400, headers: corsHeaders }
+        );
+      }
+
+      const renterDiscount = feeDiscountFor(renterProfile?.renter_score ?? 0);
+      const lenderDiscount = feeDiscountFor(lenderProfile.lender_score ?? 0);
+      const renterFeePercent = BASE_FEE_PERCENT * (1 - renterDiscount);
+      const lenderFeePercent = BASE_FEE_PERCENT * (1 - lenderDiscount);
+
+      const basePriceAgorot = Math.round(tx.total_price * 100);
+      const renterFeeAgorot = Math.round(basePriceAgorot * renterFeePercent / 100);
+      const lenderFeeAgorot = Math.round(basePriceAgorot * lenderFeePercent / 100);
+
+      // The renter pays the rental price plus their own (trust-discounted) share
+      // of the platform fee; the lender's share comes out of their transfer —
+      // both captured in one application_fee_amount below, Stripe's only lever
+      // for "platform keeps X, connected account gets the rest" on one charge.
+      amount = basePriceAgorot + renterFeeAgorot;
+      connectAccountId = lenderProfile.stripe_connect_account_id;
+      applicationFeeAgorot = renterFeeAgorot + lenderFeeAgorot;
+      feeBreakdown = {
+        base_price: tx.total_price,
+        renter_fee: renterFeeAgorot / 100,
+        lender_fee: lenderFeeAgorot / 100,
+        renter_fee_percent: renterFeePercent,
+        lender_fee_percent: lenderFeePercent,
+      };
+
       metadata = { transaction_id, renter_id: user.id };
       description = `SwipeAndRent: ${(tx as any).items?.title ?? 'Item rental'}`;
       isRental = true;
@@ -124,6 +180,10 @@ serve(async (req) => {
       metadata,
       description,
       ...(isRental ? { setup_future_usage: 'off_session' as const } : {}),
+      ...(connectAccountId ? {
+        application_fee_amount: applicationFeeAgorot,
+        transfer_data: { destination: connectAccountId },
+      } : {}),
     });
 
     // Record which Stripe payment belongs to this rental/purchase. Without it there
@@ -156,6 +216,7 @@ serve(async (req) => {
         client_secret: paymentIntent.client_secret,
         customer_id: customerId,
         ephemeral_key: ephemeralKey.secret,
+        ...(feeBreakdown ? { fee_breakdown: feeBreakdown } : {}),
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
