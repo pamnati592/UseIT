@@ -7,7 +7,7 @@ import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator'
 import { supabase } from '../services/supabase';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
-import { ChevronLeft, Scale, PackageCheck, Users, Clock, ShieldCheck, ChevronRight } from 'lucide-react-native';
+import { ChevronLeft, Scale, PackageCheck, Users, Clock, ChevronRight } from 'lucide-react-native';
 
 type Props = NativeStackScreenProps<ProfileStackParamList, 'AdminHome'>;
 
@@ -17,28 +17,21 @@ export default function AdminHomeScreen({ navigation }: Props) {
   const [disputeCount, setDisputeCount] = useState(0);
   const [pendingItemCount, setPendingItemCount] = useState(0);
   const [overdueCount, setOverdueCount] = useState(0);
-  const [supportUnreadCount, setSupportUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
       (async () => {
-        const [disputes, items, overdue, support] = await Promise.all([
+        const [disputes, items, overdue] = await Promise.all([
           supabase.rpc('admin_list_disputes'),
           supabase.rpc('admin_list_pending_items'),
           supabase.rpc('admin_list_overdue_rentals'),
-          supabase.rpc('admin_list_support_threads'),
         ]);
         if (!active) return;
         setDisputeCount(disputes.data?.length ?? 0);
         setPendingItemCount(items.data?.length ?? 0);
         setOverdueCount(overdue.data?.length ?? 0);
-        setSupportUnreadCount(
-          ((support.data as any[]) ?? []).filter(t =>
-            t.last_message_at && (!t.admin_last_read_at || new Date(t.last_message_at) > new Date(t.admin_last_read_at))
-          ).length
-        );
         setLoading(false);
       })();
       return () => { active = false; };

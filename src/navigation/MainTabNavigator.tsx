@@ -1,10 +1,11 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text, View } from 'react-native';
+import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NavigatorScreenParams } from '@react-navigation/native';
-import { House, Sparkles, MessageCircle, User, Plus, type LucideIcon } from 'lucide-react-native';
+import { House, Sparkles, MessageCircle, User, Plus, ShieldCheck, X, type LucideIcon } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { ConversationsProvider, useConversations } from '../contexts/ConversationsContext';
+import { AdminModeProvider, useAdminMode } from '../contexts/AdminModeContext';
 import HomeStackNavigator from './HomeStackNavigator';
 import ChatsStackNavigator from './ChatsStackNavigator';
 import type { ChatsStackParamList } from './ChatsStackNavigator';
@@ -42,7 +43,9 @@ export default function MainTabNavigator() {
   // green dots) reads from this one instance, never a separate copy.
   return (
     <ConversationsProvider>
-      <MainTabNavigatorInner />
+      <AdminModeProvider>
+        <MainTabNavigatorInner />
+      </AdminModeProvider>
     </ConversationsProvider>
   );
 }
@@ -50,13 +53,28 @@ export default function MainTabNavigator() {
 function MainTabNavigatorInner() {
   const { colors } = useTheme();
   const { totalUnreadCount } = useConversations();
+  const { isAdmin, adminModeActive, exitAdminMode } = useAdminMode();
   // app.json sets edgeToEdgeEnabled, so the tab bar draws underneath Android's
   // navigation bar / gesture pill. A hardcoded height put the tab labels behind it;
   // the bottom inset has to be added to both the height and the padding.
   const insets = useSafeAreaInsets();
 
   return (
-    <Tab.Navigator
+    <>
+      {/* Sits above every tab, regardless of which one is focused — the whole
+          point is that this is never ambiguous. Only Home/AI Planner/Add Item
+          keep working exactly as normal while this is up (confirmed); only
+          the Chats tab's content actually changes. */}
+      {isAdmin && adminModeActive && (
+        <View style={[styles.adminBanner, { paddingTop: insets.top + 8, backgroundColor: colors.text }]}>
+          <ShieldCheck size={14} color={colors.bg} />
+          <Text style={[styles.adminBannerText, { color: colors.bg }]}>Admin Mode — Chats shows the support inbox</Text>
+          <TouchableOpacity onPress={exitAdminMode} style={styles.adminBannerExit}>
+            <X size={14} color={colors.bg} />
+          </TouchableOpacity>
+        </View>
+      )}
+      <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarIcon: ({ focused }) => {
@@ -107,6 +125,16 @@ function MainTabNavigatorInner() {
         options={{ tabBarBadge: totalUnreadCount > 0 ? totalUnreadCount : undefined }}
       />
       <Tab.Screen name="Profile" component={ProfileStackNavigator} />
-    </Tab.Navigator>
+      </Tab.Navigator>
+    </>
   );
 }
+
+const styles = StyleSheet.create({
+  adminBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 16, paddingBottom: 10,
+  },
+  adminBannerText: { flex: 1, fontSize: 12.5, fontWeight: '600' },
+  adminBannerExit: { padding: 4 },
+});

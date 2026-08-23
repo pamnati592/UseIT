@@ -1,13 +1,19 @@
 # Next Suggested Step — For Nati 👋
 
-## ✅ Admin Support Inbox — the "room" of all UseIT conversations (2026-08-19)
-Found live: Nati messaged UseIT support, and Ori (the only admin) had no way to see it and got no notification — `AdminDisputesScreen`/`AdminOverdueScreen` only surface support threads tied to a disputed or overdue transaction specifically, but "Contact UseIT → Message UseIT" is reachable on any paid/active rental. A thread opened that way had no admin-side entry point at all. Led to a real design question too: with more than one admin, would they all see the same threads?
+## ✅ Admin Mode — a real separate persona, not a menu item (2026-08-19)
+Two-step design that landed in this order the same day:
 
-- New `admin_last_read_at` on `support_threads` (shared-inbox model — any admin reading it marks it read for all admins, same simplification as the existing `user_last_read_at`) and `admin_list_support_threads()` RPC (admin-only, every thread platform-wide with item/role context).
-- New `AdminSupportInboxScreen` — "the room of conversations with UseIT," split into **Renters**/**Lenders** tabs (same shape as the user's own Chats tab, just meaning "renters with an open case" vs "lenders with an open case"). Reached via a shield icon in the regular Chats tab header, visible only to admins — Ori's own idea, cleaner than burying it in the Admin Console.
-- **Multi-admin fix**: `SupportThreadScreen` now shows the real sender's name above any bubble that isn't the current viewer's own, but only when viewing as an admin — otherwise two admins in the same thread would both render as an identical anonymous "them" bubble, indistinguishable from the actual user. A regular user's own view of their thread is unchanged (still just "me" and UseIT, no admin identity shown).
+**Step 1 (superseded by step 2, keeping for context):** found live that Nati messaged UseIT support and Ori had no way to see it or get notified — `AdminDisputesScreen`/`AdminOverdueScreen` only surface support threads tied to a disputed or overdue transaction, but "Contact UseIT → Message UseIT" is reachable on any paid/active rental. First fix was a standalone `AdminSupportInboxScreen`, reached via a shield icon in the Chats tab header.
 
-Typecheck clean, RPC verified against real data (correct role/name/item per thread). **Not yet seen on device.**
+**Step 2 — Ori's own follow-up, reframed the whole thing:** admin shouldn't be a nested screen at all — it should be a genuinely separate app-wide persona you step into and back out of. "He's not doing anything as Ori" while in this mode. Rebuilt as:
+- New `AdminModeContext` (`isAdmin`, `adminModeActive`, persisted in AsyncStorage so it survives app restarts, re-checked on every `onAuthStateChange` — critical since this app's "Switch User" feature swaps sessions without a fresh launch, so switching to a non-admin test account must immediately drop out of admin mode).
+- A persistent banner in `MainTabNavigator`, above every tab regardless of which is focused, with an Exit button — the "never ambiguous which persona you're in" signal Ori asked for.
+- **The old `AdminSupportInboxScreen` was deleted** — its logic moved directly into `ChatsScreen`: while Admin Mode is active, the Chats tab itself transforms (title, tab labels, and content all swap to the platform-wide support inbox, split Renters/Lenders) instead of navigating to a separate screen. The shield icon in the header now toggles the mode instead of navigating away.
+- Tapping "Admin Console" in the Profile menu now calls `enterAdminMode()` before navigating to `AdminHome`, so entering admin functionality always also enters the persona.
+- **Confirmed scope**: Home / AI Planner / Add Item are deliberately untouched — Admin Mode only changes what the Chats tab shows and adds the banner, it doesn't wall off the rest of the app (you can still test the renter/lender flows while "in" admin mode).
+- The multi-admin sender-identity fix from step 1 is unchanged: `SupportThreadScreen` still shows real names for admin viewers only, never for a regular user's own view of their thread.
+
+Typecheck clean, `admin_list_support_threads()` RPC verified against real data. **Not yet seen on device.**
 
 ## 🎯 Goal (set 2026-08-19): real App Store / Play Store release, not a demo
 Ori's direction: stop building for "demo," build for **real public release** — real users downloading it, real feedback. Shortcuts that were fine for a course demo no longer are.

@@ -11,6 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '../services/supabase';
+import { useAdminMode } from '../contexts/AdminModeContext';
 import { TEST_ACCOUNTS } from '../config/testAccounts';
 import type { Item } from '../types/item';
 import { useTheme } from '../theme/ThemeContext';
@@ -38,6 +39,7 @@ export default function ProfileScreen() {
   const { colors, isDark, toggleMode } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<Nav>();
+  const { enterAdminMode } = useAdminMode();
 
   const [loading, setLoading]           = useState(true);
   const [menuOpen, setMenuOpen]         = useState(false);
@@ -378,7 +380,7 @@ export default function ProfileScreen() {
               { Icon: ClipboardList, label: 'My Rentals', onPress: () => { setMenuOpen(false); navigation.navigate('MyRentals'); } },
               { Icon: Heart,         label: 'Wishlist',   onPress: () => { setMenuOpen(false); navigation.navigate('Wishlist'); } },
               { Icon: Clock,         label: 'History',    onPress: () => { setMenuOpen(false); navigation.navigate('History'); } },
-              ...(isAdmin ? [{ Icon: ShieldCheck, label: 'Admin Console', onPress: () => { setMenuOpen(false); navigation.navigate('AdminHome'); } }] : []),
+              ...(isAdmin ? [{ Icon: ShieldCheck, label: 'Admin Console', onPress: () => { setMenuOpen(false); enterAdminMode(); navigation.navigate('AdminHome'); } }] : []),
               { Icon: Repeat,        label: 'Switch User', onPress: () => { setMenuOpen(false); setSwitchModal(true); } },
             ].map(({ Icon, label, onPress }) => (
               <TouchableOpacity key={label} style={styles.sheetRow} onPress={onPress}>
