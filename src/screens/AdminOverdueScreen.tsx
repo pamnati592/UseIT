@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Alert, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Alert, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -193,23 +193,26 @@ export default function AdminOverdueScreen({ navigation }: Props) {
         <View style={styles.backBtn} />
       </View>
 
-      {loading ? (
-        <ActivityIndicator color={colors.text} style={{ flex: 1 }} />
-      ) : rows.length === 0 ? (
-        <View style={styles.empty}>
-          <Clock size={48} color={colors.textFaint} strokeWidth={1.5} />
-          <Text style={styles.emptyText}>No overdue rentals</Text>
-          <Text style={styles.emptySub}>Active rentals past their return date will show up here</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={rows}
-          keyExtractor={(r) => r.transaction_id}
-          renderItem={renderItem}
-          contentContainerStyle={styles.list}
-          ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-        />
-      )}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        {loading ? (
+          <ActivityIndicator color={colors.text} style={{ flex: 1 }} />
+        ) : rows.length === 0 ? (
+          <View style={styles.empty}>
+            <Clock size={48} color={colors.textFaint} strokeWidth={1.5} />
+            <Text style={styles.emptyText}>No overdue rentals</Text>
+            <Text style={styles.emptySub}>Active rentals past their return date will show up here</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={rows}
+            keyExtractor={(r) => r.transaction_id}
+            renderItem={renderItem}
+            contentContainerStyle={styles.list}
+            ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+            keyboardShouldPersistTaps="handled"
+          />
+        )}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

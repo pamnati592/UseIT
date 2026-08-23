@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Image, Alert, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Image, Alert, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -255,23 +255,26 @@ export default function AdminDisputesScreen({ navigation }: Props) {
         <View style={styles.backBtn} />
       </View>
 
-      {loading ? (
-        <ActivityIndicator color={colors.text} style={{ flex: 1 }} />
-      ) : disputes.length === 0 ? (
-        <View style={styles.empty}>
-          <Scale size={48} color={colors.textFaint} strokeWidth={1.5} />
-          <Text style={styles.emptyText}>No open disputes</Text>
-          <Text style={styles.emptySub}>Disputed rentals with evidence will show up here</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={disputes}
-          keyExtractor={(d) => d.transaction_id}
-          renderItem={renderItem}
-          contentContainerStyle={styles.list}
-          ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-        />
-      )}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        {loading ? (
+          <ActivityIndicator color={colors.text} style={{ flex: 1 }} />
+        ) : disputes.length === 0 ? (
+          <View style={styles.empty}>
+            <Scale size={48} color={colors.textFaint} strokeWidth={1.5} />
+            <Text style={styles.emptyText}>No open disputes</Text>
+            <Text style={styles.emptySub}>Disputed rentals with evidence will show up here</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={disputes}
+            keyExtractor={(d) => d.transaction_id}
+            renderItem={renderItem}
+            contentContainerStyle={styles.list}
+            ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+            keyboardShouldPersistTaps="handled"
+          />
+        )}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
