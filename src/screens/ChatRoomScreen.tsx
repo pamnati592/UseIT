@@ -16,6 +16,7 @@ import { insertSystemMessage as sharedInsertSystemMessage } from '../services/ch
 import { uploadImage, HANDOFF_EVIDENCE_BUCKET, disputePhotoPath } from '../services/storage';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
+import { useAdminMode } from '../contexts/AdminModeContext';
 import { CategoryIcon } from '../components/CategoryIcon';
 import {
   Check, X, CreditCard, Clock, ChevronLeft, Package, Calendar, MessageCircle, ClipboardList, ArrowUp,
@@ -120,6 +121,9 @@ type Props = NativeStackScreenProps<ChatsStackParamList, 'ChatRoom'>;
 export default function ChatRoomScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  // An admin is UseIT — contacting "UseIT support" from their own rental as
+  // a party makes no sense, so the button is hidden for them entirely.
+  const { isAdmin } = useAdminMode();
   const { conversationId, itemTitle, otherUserName, initialText, targetTransactionId, initialTab, highlightAfterTimestamp, declineTransactionId, reportIssueTransactionId } = route.params;
   const [activeTab, setActiveTab] = useState<'chat' | 'deal'>(initialTab ?? 'chat');
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
@@ -677,11 +681,13 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
 
   // QRDisplayScreen and QRScanScreen's return flow both route here rather than
   // collecting evidence themselves — this is the one canonical dispute screen (SAS).
+  // Skipped for an admin (see isAdmin above) — it opens the same modal as the
+  // Contact UseIT button, "Message UseIT" included.
   useEffect(() => {
-    if (!reportIssueTransactionId) return;
+    if (!reportIssueTransactionId || isAdmin) return;
     handleReportIssue(reportIssueTransactionId);
     navigation.setParams({ reportIssueTransactionId: undefined });
-  }, [reportIssueTransactionId]);
+  }, [reportIssueTransactionId, isAdmin]);
 
   function handleDeclineAtPickup(transactionId: string) {
     setDeclineReason('');
@@ -1320,7 +1326,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
               {tx.status === 'cancelled' && !disputeResolutions[tx.id] && (
                 <Text style={styles.helperText}>⚠️ This rental was cancelled — refund processed per policy.</Text>
               )}
-              {(
+              {!isAdmin && (
                 tx.status === 'paid'
                 || tx.status === 'active'
                 || tx.status === 'disputed'
