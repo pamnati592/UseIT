@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 
 export const ITEM_IMAGES_BUCKET = 'item-images';        // public — item galleries, avatars
 export const HANDOFF_EVIDENCE_BUCKET = 'handoff-evidence'; // private — condition & dispute photos
+export const VERIFICATION_PHOTOS_BUCKET = 'verification-photos'; // private — admin-only (spec 4.7)
 
 // base64 → Uint8Array. fetch() and XHR both hand back 0-byte blobs for Expo file
 // URIs on iOS, so the SDK is fed raw bytes instead. This was independently

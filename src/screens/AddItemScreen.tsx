@@ -7,6 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../services/supabase';
+import { uploadImage, VERIFICATION_PHOTOS_BUCKET } from '../services/storage';
 import CityPicker, { type CityValue } from '../components/CityPicker';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
@@ -177,8 +178,10 @@ export default function AddItemScreen() {
 
       const ts = Date.now();
 
-      const verificationUrl = verificationPhoto
-        ? await uploadPhotoAsset(verificationPhoto, `${user.id}/verification-${ts}`)
+      // Private bucket (backlog AB) — stores a path, not a public URL; admin
+      // moderation mints a short-lived signed URL at display time instead.
+      const verificationPath = verificationPhoto
+        ? await uploadImage(VERIFICATION_PHOTOS_BUCKET, `${user.id}/verification-${ts}`, verificationPhoto)
         : null;
 
       const photoUrls: string[] = [];
@@ -198,7 +201,7 @@ export default function AddItemScreen() {
         sale_price: forSale && salePrice ? parseFloat(salePrice) : null,
         city: cityValue!.city,
         verification_status: 'pending',
-        verification_image_url: verificationUrl,
+        verification_image_url: verificationPath,
         photos: photoUrls,
         location: `POINT(${cityValue!.lng} ${cityValue!.lat})`,
         pickup_location: pickupLocation.trim() || null,
