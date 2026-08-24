@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo} from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Image, ActivityIndicator,
+  Image, ActivityIndicator, Modal, Alert, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -11,7 +11,9 @@ import { supabase } from '../services/supabase';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
-import { ChevronLeft, ChevronRight, MapPin, Check, X, TriangleAlert } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, MapPin, Check, X, TriangleAlert, Flag } from 'lucide-react-native';
+
+const REPORT_REASONS = ['Harassment', 'Scam or fraud', 'Inappropriate content', 'Item not as described', 'Other'];
 
 type Props = NativeStackScreenProps<HomeStackParamList, 'PublicProfile'>;
 
@@ -46,6 +48,31 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
   const [lenderCancellations, setLenderCancellations] = useState(0);
   const [avatarUrl, setAvatarUrl]   = useState<string | null>(null);
   const [loading, setLoading]       = useState(true);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [reportReason, setReportReason] = useState<string | null>(null);
+  const [reportDescription, setReportDescription] = useState('');
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id ?? null));
+  }, []);
+
+  async function submitReport() {
+    if (!reportReason || reportSubmitting) return;
+    setReportSubmitting(true);
+    const { error } = await supabase.rpc('report_user', {
+      p_reported_user_id: userId,
+      p_reason: reportReason,
+      p_description: reportDescription.trim() || null,
+    });
+    setReportSubmitting(false);
+    if (error) { Alert.alert('Error', error.message); return; }
+    setReportModalVisible(false);
+    setReportReason(null);
+    setReportDescription('');
+    Alert.alert('Report submitted', 'Thanks — UseIT will review this.');
+  }
 
   useEffect(() => {
     async function load() {
@@ -128,9 +155,16 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <View style={styles.header}>
-            <TouchableOpacity style={styles.backButton} onPress={() => navigation.canGoBack() ? navigation.goBack() : (navigation as any).getParent()?.navigate('HomeStack')}>
-              <ChevronLeft size={26} color={colors.text} />
-            </TouchableOpacity>
+            <View style={styles.topRow}>
+              <TouchableOpacity style={styles.topRowBtn} onPress={() => navigation.canGoBack() ? navigation.goBack() : (navigation as any).getParent()?.navigate('HomeStack')}>
+                <ChevronLeft size={26} color={colors.text} />
+              </TouchableOpacity>
+              {currentUserId && userId !== currentUserId && (
+                <TouchableOpacity style={styles.topRowBtn} onPress={() => setReportModalVisible(true)}>
+                  <Flag size={20} color={colors.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
 
             <View style={styles.avatarSection}>
               <View style={styles.avatar}>
@@ -229,6 +263,45 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
             : <View style={styles.empty}><Text style={styles.emptyText}>No active listings</Text></View>
         }
       />
+
+      <Modal visible={reportModalVisible} transparent animationType="slide" onRequestClose={() => setReportModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <Text style={styles.modalTitle}>Report {userName}</Text>
+            <View style={styles.reasonList}>
+              {REPORT_REASONS.map((reason) => (
+                <TouchableOpacity
+                  key={reason}
+                  style={[styles.reasonRow, reportReason === reason && styles.reasonRowSelected]}
+                  onPress={() => setReportReason(reason)}
+                >
+                  <Text style={[styles.reasonText, reportReason === reason && styles.reasonTextSelected]}>{reason}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TextInput
+              style={[styles.reportInput, { color: colors.text, borderColor: colors.border }]}
+              placeholder="Add details (optional)"
+              placeholderTextColor={colors.textMuted}
+              value={reportDescription}
+              onChangeText={setReportDescription}
+              multiline
+            />
+            <TouchableOpacity
+              style={[styles.modalPrimaryBtn, (!reportReason || reportSubmitting) && styles.btnDisabled]}
+              onPress={submitReport}
+              disabled={!reportReason || reportSubmitting}
+            >
+              {reportSubmitting
+                ? <ActivityIndicator color={colors.btnText} />
+                : <Text style={styles.modalPrimaryBtnText}>Submit Report</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setReportModalVisible(false)} style={styles.modalCancelLink}>
+              <Text style={styles.modalCancelLinkText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -238,7 +311,8 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   listContent: { paddingBottom: 40 },
   header: { paddingBottom: 8 },
 
-  backButton: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 4 },
+  topRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 4 },
+  topRowBtn: { padding: 2 },
   backText: { fontSize: 32, color: colors.text, fontWeight: '300', lineHeight: 36 },
 
   // Pending request approval card
@@ -323,4 +397,18 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
 
   empty: { alignItems: 'center', paddingTop: 40 },
   emptyText: { fontSize: 15, color: colors.textFaint },
+
+  modalOverlay: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' },
+  modalSheet: { backgroundColor: colors.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, gap: 12 },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: colors.text, textAlign: 'center' },
+  reasonList: { gap: 8 },
+  reasonRow: { paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
+  reasonRowSelected: { borderColor: colors.primary, backgroundColor: colors.infoBg },
+  reasonText: { fontSize: 14, color: colors.text },
+  reasonTextSelected: { fontWeight: '700', color: colors.primary },
+  reportInput: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 14, minHeight: 70, textAlignVertical: 'top' },
+  modalPrimaryBtn: { backgroundColor: colors.danger, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  modalPrimaryBtnText: { color: colors.white, fontSize: 15, fontWeight: '700' },
+  modalCancelLink: { alignItems: 'center', paddingVertical: 6 },
+  modalCancelLinkText: { fontSize: 14, color: colors.textMuted },
 });

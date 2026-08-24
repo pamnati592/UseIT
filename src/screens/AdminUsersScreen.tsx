@@ -25,11 +25,11 @@ type AdminUserRow = {
   created_at: string;
 };
 
-export default function AdminUsersScreen({ navigation }: Props) {
+export default function AdminUsersScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [users, setUsers] = useState<AdminUserRow[]>([]);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(route.params?.initialSearch ?? '');
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -41,7 +41,10 @@ export default function AdminUsersScreen({ navigation }: Props) {
     setLoading(false);
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  // AdminReportsScreen deep-links here with the reported user's name so the
+  // admin doesn't have to search manually — ban/unban stays the one
+  // canonical action here (SAS), reports just navigates to it.
+  useFocusEffect(useCallback(() => { load(route.params?.initialSearch); }, [load, route.params?.initialSearch]));
 
   function scoreLabel(score: number | null): string {
     if (score === null || score === 0) return '—';
