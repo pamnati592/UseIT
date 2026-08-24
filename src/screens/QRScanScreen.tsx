@@ -15,7 +15,7 @@ import { uploadImage, HANDOFF_EVIDENCE_BUCKET, handoffPhotoPath } from '../servi
 import { insertSystemMessage } from '../services/chatMessages';
 import * as Location from 'expo-location';
 import { getCurrentLocationOnce } from '../hooks/useUserLocation';
-import { metersBetween } from '../utils/format';
+import { metersBetween, getImpactScore } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CHECKLIST_ITEMS, PROXIMITY_LIMIT_M, type QrPayload } from './qrShared';
@@ -45,6 +45,26 @@ export default function QRScanScreen({ navigation, route }: Props) {
   const photoUri = photoAsset?.uri ?? null;
   const [processing, setProcessing] = useState(false);
   const [alreadyRated, setAlreadyRated] = useState(false);
+  // Backlog R: real Impact Score (category + this item's real completed-
+  // rental count) instead of the old hardcoded 4.4.
+  const [itemImpact, setItemImpact] = useState<{ category: string; completedRentalCount: number } | null>(null);
+
+  useEffect(() => {
+    // Fetched only once 'done' — scan_qr_handoff (which increments
+    // completed_rental_count) has already committed by the time this
+    // screen's own scan handler sets step to 'done', so this always reads
+    // the post-increment count rather than racing it.
+    if (step !== 'done' || phase !== 'return') return;
+    supabase
+      .from('transactions')
+      .select('items(category, completed_rental_count)')
+      .eq('id', transactionId)
+      .single()
+      .then(({ data }) => {
+        const item = (data as any)?.items;
+        if (item) setItemImpact({ category: item.category, completedRentalCount: item.completed_rental_count });
+      });
+  }, [step, phase, transactionId]);
   const scoreAnim = useRef(new Animated.Value(0)).current;
   const handledRef = useRef(false);
 
@@ -367,23 +387,29 @@ export default function QRScanScreen({ navigation, route }: Props) {
                   <View style={styles.impactHeaderRow}>
                     <Leaf size={15} color="#22c55e" strokeWidth={2.5} />
                     <Text style={styles.impactLabel}>Your Impact Score</Text>
+                    {/* Exactly what this one return scan just added — matches
+                        the +0.1-per-completed-rental reuse bonus below. */}
                     <View style={styles.impactDeltaBadge}>
-                      <Text style={styles.impactDeltaText}>↑ +0.3</Text>
+                      <Text style={styles.impactDeltaText}>↑ +0.1</Text>
                     </View>
                   </View>
-                  <Text style={styles.impactScoreNum}>4.4</Text>
+                  <Text style={styles.impactScoreNum}>
+                    {itemImpact ? getImpactScore(itemImpact.category, itemImpact.completedRentalCount).toFixed(1) : '—'}
+                  </Text>
                   <View style={styles.impactBarTrack}>
                     <Animated.View style={[
                       styles.impactBarFill,
                       {
                         width: scoreAnim.interpolate({
                           inputRange: [0, 1],
-                          outputRange: ['82%', '88%'],
+                          outputRange: ['0%', `${itemImpact ? (getImpactScore(itemImpact.category, itemImpact.completedRentalCount) / 5) * 100 : 0}%`],
                         }),
                       },
                     ]} />
                   </View>
-                  <Text style={styles.impactCo2}>🌿 ~3.5 kg CO₂ saved this rental</Text>
+                  <Text style={styles.impactCo2}>
+                    🌿 ~{itemImpact ? ((getImpactScore(itemImpact.category, itemImpact.completedRentalCount) - 3.0) * 5 + 2).toFixed(1) : '—'} kg CO₂ saved this rental
+                  </Text>
                 </View>
               )}
 

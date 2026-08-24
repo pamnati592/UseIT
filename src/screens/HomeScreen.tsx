@@ -219,7 +219,7 @@ export default function HomeScreen({ navigation }: Props) {
                   {/* Impact badge — top left */}
                   <View style={styles.impactBadge} pointerEvents="none">
                     <Leaf size={11} color="#fff" strokeWidth={2.5} />
-                    <Text style={styles.impactBadgeText}>{getImpactScore(item.id).toFixed(1)}</Text>
+                    <Text style={styles.impactBadgeText}>{getImpactScore(item.category, item.completed_rental_count).toFixed(1)}</Text>
                   </View>
 
                   {/* Distance badge — top right */}

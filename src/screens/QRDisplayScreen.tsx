@@ -15,6 +15,7 @@ import { getCurrentLocationOnce } from '../hooks/useUserLocation';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { type QrPayload } from './qrShared';
+import { getImpactScore } from '../utils/format';
 
 type Props = NativeStackScreenProps<ChatsStackParamList, 'QRDisplay'>;
 
@@ -24,9 +25,6 @@ type Props = NativeStackScreenProps<ChatsStackParamList, 'QRDisplay'>;
 const ABORTED_STATUSES = ['cancelled', 'rejected', 'disputed'];
 type Step = 'loading' | 'qr' | 'done';
 
-// TODO: replace with the real computed Impact Score once that feature lands
-const SCORE_AFTER = 4.0;
-const CO2_SAVED    = '3.5';
 
 export default function QRDisplayScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
@@ -36,6 +34,9 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
   const [step,    setStep]    = useState<Step>('loading');
   const [payload, setPayload] = useState<QrPayload | null>(null);
   const [alreadyRated, setAlreadyRated] = useState(false);
+  // Backlog R: real Impact Score (category + this item's real completed-
+  // rental count) instead of the old hardcoded SCORE_AFTER.
+  const [itemImpact, setItemImpact] = useState<{ category: string; completedRentalCount: number } | null>(null);
   // Guards the abort alert — the poll would otherwise fire it again on every tick.
   const abortedRef = useRef(false);
   const scoreAnim = useRef(new Animated.Value(0)).current;
@@ -70,6 +71,23 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
   useEffect(() => {
     startDisplay();
   }, []);
+
+  useEffect(() => {
+    // Fetched only once 'done' — by the time the poll above detects the
+    // counterpart's scan (successStatus), their scan_qr_handoff call (which
+    // increments completed_rental_count) has already committed, so this
+    // always reads the post-increment count rather than racing it.
+    if (step !== 'done' || phase !== 'return') return;
+    supabase
+      .from('transactions')
+      .select('items(category, completed_rental_count)')
+      .eq('id', transactionId)
+      .single()
+      .then(({ data }) => {
+        const item = (data as any)?.items;
+        if (item) setItemImpact({ category: item.category, completedRentalCount: item.completed_rental_count });
+      });
+  }, [step, phase, transactionId]);
 
   // Checked on focus rather than only on mount: the user lands back on this screen
   // right after rating, and the offer has to be gone by then rather than leading to
@@ -191,12 +209,16 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
               <View style={styles.impactHeaderRow}>
                 <Leaf size={15} color="#22c55e" strokeWidth={2.5} />
                 <Text style={styles.impactLabel}>Your Impact Score</Text>
+                {/* Exactly what this one return scan just added — matches the
+                    +0.1-per-completed-rental reuse bonus in getImpactScore. */}
                 <View style={styles.impactDeltaBadge}>
-                  <Text style={styles.impactDeltaText}>↑ +0.3</Text>
+                  <Text style={styles.impactDeltaText}>↑ +0.1</Text>
                 </View>
               </View>
 
-              <Text style={styles.impactScoreNum}>{SCORE_AFTER.toFixed(1)}</Text>
+              <Text style={styles.impactScoreNum}>
+                {itemImpact ? getImpactScore(itemImpact.category, itemImpact.completedRentalCount).toFixed(1) : '—'}
+              </Text>
 
               <View style={styles.impactBarTrack}>
                 <Animated.View style={[
@@ -204,13 +226,15 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
                   {
                     width: scoreAnim.interpolate({
                       inputRange: [0, 1],
-                      outputRange: ['74%', '80%'],
+                      outputRange: ['0%', `${itemImpact ? (getImpactScore(itemImpact.category, itemImpact.completedRentalCount) / 5) * 100 : 0}%`],
                     }),
                   },
                 ]} />
               </View>
 
-              <Text style={styles.impactCo2}>🌿 ~{CO2_SAVED} kg CO₂ saved this rental</Text>
+              <Text style={styles.impactCo2}>
+                🌿 ~{itemImpact ? ((getImpactScore(itemImpact.category, itemImpact.completedRentalCount) - 3.0) * 5 + 2).toFixed(1) : '—'} kg CO₂ saved this rental
+              </Text>
             </View>
 
             {alreadyRated ? (

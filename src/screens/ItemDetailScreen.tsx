@@ -464,7 +464,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
 
             {/* Impact Score */}
             {(() => {
-              const score = getImpactScore(item.id);
+              const score = getImpactScore(item.category, item.completed_rental_count);
               const fill = (score - 3.0) / 2.0; // 0–1
               const tier = score >= 4.6 ? 'Excellent' : score >= 4.1 ? 'Great' : score >= 3.6 ? 'Very Good' : 'Good';
               const co2 = ((score - 3.0) * 5 + 2).toFixed(1);

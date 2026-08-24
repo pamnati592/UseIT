@@ -12,4 +12,9 @@ export type Item = {
   // Populated by the get_feed RPC; undefined for queries that don't include it,
   // null when the caller or the item lacks coordinates.
   distance_meters?: number | null;
+  // Real rental count backing the Impact Score (backlog R) — populated by
+  // get_feed; undefined for queries that don't select it, in which case
+  // getImpactScore treats it as 0 (still a real category baseline, just no
+  // reuse bonus yet).
+  completed_rental_count?: number;
 };
