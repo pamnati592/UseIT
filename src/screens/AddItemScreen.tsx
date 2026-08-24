@@ -113,7 +113,13 @@ export default function AddItemScreen() {
       const { data, error } = await supabase.functions.invoke('analyze-item-photo', {
         body: { image_base64: cover.base64, mime_type: cover.mimeType },
       });
-      if (error) throw error;
+      if (error) {
+        // supabase-js's own error.message is just "Edge Function returned a
+        // non-2xx status code" — the function's actual {error: "..."} body
+        // (why it really failed) is only reachable via error.context.
+        const body = await error.context?.json?.().catch(() => null);
+        throw new Error(body?.error ?? error.message);
+      }
       if (data?.error) throw new Error(data.error);
 
       if (data.title) setTitle(data.title);
