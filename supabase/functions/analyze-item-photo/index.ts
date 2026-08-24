@@ -65,6 +65,11 @@ If you cannot clearly identify a rentable item, use "other" for category and des
         temperature: 0.2,
         max_tokens: 512,
         response_format: { type: 'json_object' },
+        // Qwen's thinking mode is on by default and emits reasoning content
+        // before the actual answer, which fails Groq's json_object schema
+        // validation (the "failed_generation - failed to validate json"
+        // error) since the completion isn't pure JSON anymore.
+        reasoning_format: 'hidden',
         messages: [
           {
             role: 'user',
