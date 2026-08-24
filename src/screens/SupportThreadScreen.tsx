@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ActivityIndicator, type ListRenderItemInfo,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, type ListRenderItemInfo,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
-import { ChevronLeft, ArrowUp, ShieldCheck } from 'lucide-react-native';
+import { ChevronLeft, ArrowUp, ShieldCheck, Scale } from 'lucide-react-native';
 import { supabase } from '../services/supabase';
 import { chatBus } from '../services/chatBus';
 import { useTheme } from '../theme/ThemeContext';
@@ -42,6 +42,9 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
   const [text, setText] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [threadUserId, setThreadUserId] = useState<string | null>(null);
+  const [threadTransactionId, setThreadTransactionId] = useState<string | null>(null);
+  const [disputeOpened, setDisputeOpened] = useState(false);
+  const [openingDispute, setOpeningDispute] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -84,7 +87,7 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
       setCurrentUserId(myId);
 
       const [{ data: thread }, { data }] = await Promise.all([
-        supabase.from('support_threads').select('user_id').eq('id', threadId).single(),
+        supabase.from('support_threads').select('user_id, transaction_id').eq('id', threadId).single(),
         supabase
           .from('support_messages')
           .select('id, sender_id, content, created_at, sender:profiles!support_messages_sender_id_fkey(full_name)')
@@ -95,6 +98,7 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
 
       if (thread) {
         setThreadUserId(thread.user_id);
+        setThreadTransactionId(thread.transaction_id);
         isOwnerRef.current = thread.user_id === user.id;
         isAdminViewerRef.current = thread.user_id !== user.id;
       }
@@ -171,6 +175,37 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
     setSending(false);
   }
 
+  // Covers the case a user contacted UseIT without going through their own
+  // "Report a Problem" flow — the admin, reading the conversation, is the
+  // one who decides it needs formal dispute review. Reuses the exact same
+  // effect as a party's own report_issue (transaction -> disputed, a row in
+  // disputes), just admin-gated with the reporter named explicitly, since
+  // the admin isn't a party. Once open, the transaction shows up in the
+  // normal Dispute Queue (SAS — no separate admin-only dispute view).
+  function confirmOpenDispute() {
+    if (!threadTransactionId || !threadUserId || openingDispute || disputeOpened) return;
+    Alert.alert(
+      'Open a dispute?',
+      'This moves the rental to Disputed and adds it to the Dispute Queue, on this user\'s behalf.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Open Dispute', style: 'destructive', onPress: async () => {
+            setOpeningDispute(true);
+            const { error } = await supabase.rpc('admin_open_dispute', {
+              p_transaction_id: threadTransactionId,
+              p_user_id: threadUserId,
+            });
+            setOpeningDispute(false);
+            if (error) { Alert.alert('Could not open dispute', error.message); return; }
+            setDisputeOpened(true);
+            Alert.alert('Dispute opened', 'Visible now in the Dispute Queue.');
+          },
+        },
+      ]
+    );
+  }
+
   function formatTime(iso: string): string {
     return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
@@ -203,7 +238,17 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
           <ShieldCheck size={16} color={colors.primary} />
           <Text style={styles.title} numberOfLines={1}>{title}</Text>
         </View>
-        <View style={styles.backBtn} />
+        {isAdminViewerRef.current ? (
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={confirmOpenDispute}
+            disabled={openingDispute || disputeOpened}
+          >
+            <Scale size={20} color={disputeOpened ? colors.textFaint : colors.danger} />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.backBtn} />
+        )}
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
