@@ -206,7 +206,13 @@ export default function ProfileScreen() {
     setPayoutsLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('connect-onboarding');
-      if (error) throw error;
+      if (error) {
+        // Same pitfall as analyze-item-photo: error.message is always the
+        // generic "Edge Function returned a non-2xx status code" — the
+        // function's real {error: "..."} body only lives in error.context.
+        const body = await error.context?.json?.().catch(() => null);
+        throw new Error(body?.error ?? error.message);
+      }
       if (data?.error) throw new Error(data.error);
 
       await WebBrowser.openAuthSessionAsync(data.url, 'swipeandrent://connect-return');
