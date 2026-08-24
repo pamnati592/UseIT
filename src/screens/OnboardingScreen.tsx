@@ -10,9 +10,10 @@ import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import {
   ShoppingCart, Package, Repeat, ChevronLeft,
-  Camera, Tent, Wrench, Gamepad2, Music, Bike, Utensils, Palette, Sailboat, Snowflake, Film, Mountain, Shirt,
+  Utensils, Palette, Sailboat, Snowflake, Film, Mountain,
   type LucideIcon,
 } from 'lucide-react-native';
+import { CATEGORY_INTEREST_OPTIONS } from '../constants/categories';
 
 const ROLES: { value: Role; label: string; description: string; icon: LucideIcon }[] = [
   { value: 'renter', label: 'Renter', description: 'I want to rent items from others', icon: ShoppingCart },
@@ -20,14 +21,11 @@ const ROLES: { value: Role; label: string; description: string; icon: LucideIcon
   { value: 'both', label: 'Both', description: 'I want to rent and lend', icon: Repeat },
 ];
 
+// Real item categories (single source of truth: constants/categories.ts) up
+// front, then a few broader interest-only tags that aren't real categories
+// — kept local since nothing else needs them.
 const INTERESTS: { value: string; label: string; icon: LucideIcon }[] = [
-  { value: 'photography', label: 'Photography', icon: Camera },
-  { value: 'camping', label: 'Camping', icon: Tent },
-  { value: 'diy', label: 'DIY & Tools', icon: Wrench },
-  { value: 'gaming', label: 'Gaming', icon: Gamepad2 },
-  { value: 'music', label: 'Music', icon: Music },
-  { value: 'sports', label: 'Sports', icon: Bike },
-  { value: 'clothing', label: 'Clothing & Fashion', icon: Shirt },
+  ...CATEGORY_INTEREST_OPTIONS,
   { value: 'cooking', label: 'Cooking', icon: Utensils },
   { value: 'art', label: 'Art & Craft', icon: Palette },
   { value: 'water_sports', label: 'Water Sports', icon: Sailboat },

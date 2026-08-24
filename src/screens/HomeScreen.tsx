@@ -15,6 +15,7 @@ import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { MapPin, X, Heart, Leaf } from 'lucide-react-native';
 import { getImpactScore } from '../utils/format';
+import { CATEGORY_FILTER_CHIPS } from '../constants/categories';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.3;
@@ -264,18 +265,15 @@ export default function HomeScreen({ navigation }: Props) {
 
 // ── Category Filter Bar ───────────────────────────────────────────────────────
 
+// Real item categories (single source of truth: constants/categories.ts)
+// first, then a few broader interest-tag-only filters that aren't real
+// item categories (matched against items.tags instead — see get_feed).
 const CATEGORIES: { key: string; label: string }[] = [
-  { key: 'photography', label: 'Cameras' },
-  { key: 'camping',     label: 'Camping'  },
-  { key: 'diy',         label: 'DIY'      },
-  { key: 'gaming',      label: 'Gaming'   },
-  { key: 'sports',      label: 'Sports'   },
-  { key: 'music',       label: 'Music'    },
-  { key: 'clothing',    label: 'Clothing' },
-  { key: 'biking',      label: 'Biking'   },
-  { key: 'cooking',     label: 'Cooking'  },
-  { key: 'art',         label: 'Art'      },
-  { key: 'film',        label: 'Film'     },
+  ...CATEGORY_FILTER_CHIPS,
+  { key: 'biking',  label: 'Biking'  },
+  { key: 'cooking', label: 'Cooking' },
+  { key: 'art',     label: 'Art'     },
+  { key: 'film',    label: 'Film'    },
 ];
 
 function CategoryBar({

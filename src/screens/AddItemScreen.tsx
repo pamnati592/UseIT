@@ -13,8 +13,8 @@ import CityPicker, { type CityValue } from '../components/CityPicker';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { X, Sparkles } from 'lucide-react-native';
+import { CATEGORY_KEYS, categoryLabel } from '../constants/categories';
 
-const CATEGORIES = ['photography', 'gaming', 'camping', 'diy', 'music', 'sports', 'clothing', 'other'];
 const MAX_ITEM_PHOTOS = 6;
 
 type PhotoAsset = {
@@ -126,7 +126,7 @@ export default function AddItemScreen() {
       if (data?.error) throw new Error(data.error);
 
       if (data.title) setTitle(data.title);
-      if (data.category && CATEGORIES.includes(data.category)) setCategory(data.category);
+      if (data.category && CATEGORY_KEYS.includes(data.category)) setCategory(data.category);
       if (data.description) setDescription(data.description);
       if (data.daily_price) setDailyPrice(String(data.daily_price));
     } catch (e: any) {
@@ -239,13 +239,13 @@ export default function AddItemScreen() {
 
           <Text style={styles.label}>Category *</Text>
           <View style={styles.categoryRow}>
-            {CATEGORIES.map((cat) => (
+            {CATEGORY_KEYS.map((cat) => (
               <TouchableOpacity
                 key={cat}
                 style={[styles.categoryChip, category === cat && styles.categoryChipActive]}
                 onPress={() => setCategory(cat)}
               >
-                <Text style={[styles.categoryChipText, category === cat && styles.categoryChipTextActive]}>{cat}</Text>
+                <Text style={[styles.categoryChipText, category === cat && styles.categoryChipTextActive]}>{categoryLabel(cat)}</Text>
               </TouchableOpacity>
             ))}
           </View>

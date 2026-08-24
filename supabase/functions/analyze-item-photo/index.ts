@@ -6,6 +6,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Keep in sync by hand with CATEGORY_KEYS in src/constants/categories.ts —
+// that file is the single source of truth for categories app-side, but this
+// is a separate deployed Deno runtime that can't import from src/.
 const CATEGORIES = ['photography', 'gaming', 'camping', 'diy', 'music', 'sports', 'clothing', 'other'];
 
 // Backlog S: AI auto-fill a single item's form fields from its own photo —

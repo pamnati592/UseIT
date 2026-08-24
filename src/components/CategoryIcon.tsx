@@ -1,20 +1,14 @@
 import {
-  Camera, Gamepad2, Tent, Wrench, Music, Dumbbell, Package,
-  Bike, Utensils, Palette, Sailboat, Snowflake, Film, Shirt,
+  Bike, Utensils, Palette, Sailboat, Snowflake, Film,
   type LucideIcon,
 } from 'lucide-react-native';
+import { categoryIcon as registryIcon } from '../constants/categories';
 
-// Single source of truth for category -> icon, matching the Figma wireframes.
-// Used for the item card fallback art and anywhere a category is shown.
-const CATEGORY_ICON: Record<string, LucideIcon> = {
-  photography: Camera,
-  gaming: Gamepad2,
-  camping: Tent,
-  diy: Wrench,
-  music: Music,
-  sports: Dumbbell,
-  clothing: Shirt,
-  // extended interest tags (onboarding)
+// Real item categories live in constants/categories.ts (the single source
+// of truth) — these are the broader onboarding-only interest tags that
+// aren't real item categories (see CATEGORY_INTEREST_OPTIONS's own comment
+// there), so they stay local to this icon lookup.
+const EXTRA_TAG_ICON: Record<string, LucideIcon> = {
   biking: Bike,
   cooking: Utensils,
   art: Palette,
@@ -24,7 +18,8 @@ const CATEGORY_ICON: Record<string, LucideIcon> = {
 };
 
 export function categoryIcon(category: string): LucideIcon {
-  return CATEGORY_ICON[category] ?? Package;
+  // registryIcon already falls back to Package internally for unknown keys.
+  return EXTRA_TAG_ICON[category] ?? registryIcon(category);
 }
 
 type Props = {

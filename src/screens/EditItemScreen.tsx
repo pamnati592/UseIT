@@ -13,8 +13,8 @@ import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator'
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { X } from 'lucide-react-native';
+import { CATEGORY_KEYS, categoryLabel } from '../constants/categories';
 
-const CATEGORIES = ['photography', 'gaming', 'camping', 'diy', 'music', 'sports', 'clothing', 'other'];
 const MAX_ITEM_PHOTOS = 6;
 
 type ExistingPhoto = { kind: 'existing'; url: string };
@@ -231,13 +231,13 @@ export default function EditItemScreen({ navigation, route }: Props) {
 
           <Text style={styles.label}>Category *</Text>
           <View style={styles.categoryRow}>
-            {CATEGORIES.map(cat => (
+            {CATEGORY_KEYS.map(cat => (
               <TouchableOpacity
                 key={cat}
                 style={[styles.categoryChip, category === cat && styles.categoryChipActive]}
                 onPress={() => setCategory(cat)}
               >
-                <Text style={[styles.categoryChipText, category === cat && styles.categoryChipTextActive]}>{cat}</Text>
+                <Text style={[styles.categoryChipText, category === cat && styles.categoryChipTextActive]}>{categoryLabel(cat)}</Text>
               </TouchableOpacity>
             ))}
           </View>
