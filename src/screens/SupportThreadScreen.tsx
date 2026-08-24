@@ -199,7 +199,7 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
             setOpeningDispute(false);
             if (error) { Alert.alert('Could not open dispute', error.message); return; }
             setDisputeOpened(true);
-            Alert.alert('Dispute opened', 'Visible now in the Dispute Queue.');
+            navigation.navigate('AdminDisputes');
           },
         },
       ]
@@ -238,18 +238,23 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
           <ShieldCheck size={16} color={colors.primary} />
           <Text style={styles.title} numberOfLines={1}>{title}</Text>
         </View>
-        {isAdminViewerRef.current ? (
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={confirmOpenDispute}
-            disabled={openingDispute || disputeOpened}
-          >
-            <Scale size={20} color={disputeOpened ? colors.textFaint : colors.danger} />
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.backBtn} />
-        )}
+        <View style={styles.backBtn} />
       </View>
+
+      {/* Sits between the header and the message list, not inside the
+          FlatList, so it never scrolls away with the chat — always visible
+          right under the title, exactly where an admin decides to escalate. */}
+      {isAdminViewerRef.current && !disputeOpened && (
+        <TouchableOpacity
+          style={styles.disputeCard}
+          onPress={confirmOpenDispute}
+          disabled={openingDispute}
+        >
+          <Scale size={16} color={colors.danger} />
+          <Text style={styles.disputeCardText}>Open a dispute</Text>
+          {openingDispute && <ActivityIndicator size="small" color={colors.danger} />}
+        </TouchableOpacity>
+      )}
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         {loading ? (
@@ -301,6 +306,13 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   backBtn: { width: 36 },
   headerTitleRow: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   title: { fontSize: 16, fontWeight: '700', color: colors.text },
+  disputeCard: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingVertical: 10, marginHorizontal: 16, marginTop: 12,
+    backgroundColor: colors.dangerBg, borderRadius: 12,
+    borderWidth: 1, borderColor: colors.danger,
+  },
+  disputeCardText: { fontSize: 14, fontWeight: '700', color: colors.danger },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 40 },
   emptyText: { fontSize: 14, color: colors.textFaint, textAlign: 'center' },
   list: { padding: 16, gap: 4 },

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Image, Alert, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -43,6 +43,12 @@ export default function AdminDisputesScreen({ navigation }: Props) {
   // Ruling is tapped. Freely switchable between renter/lender before then;
   // nothing is sent to either party until the explicit publish action.
   const [selectedFavor, setSelectedFavor] = useState<Record<string, 'renter' | 'lender'>>({});
+  // The sole admin account is also a real test party on real transactions —
+  // "Message Renter/Lender" must hide whichever side is the admin's own
+  // account, since admin_ensure_support_thread now rejects that server-side
+  // (an admin can't have a support thread with themselves).
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  useEffect(() => { supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id ?? null)); }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -178,20 +184,24 @@ export default function AdminDisputesScreen({ navigation }: Props) {
         )}
 
         <View style={styles.messageRow}>
-          <TouchableOpacity
-            style={styles.messageBtn}
-            onPress={() => messageParty(d.transaction_id, d.renter_id, d.renter_name)}
-          >
-            <ShieldCheck size={13} color={colors.primary} />
-            <Text style={styles.messageBtnText}>Message Renter</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.messageBtn}
-            onPress={() => messageParty(d.transaction_id, d.lender_id, d.lender_name)}
-          >
-            <ShieldCheck size={13} color={colors.primary} />
-            <Text style={styles.messageBtnText}>Message Lender</Text>
-          </TouchableOpacity>
+          {d.renter_id !== currentUserId && (
+            <TouchableOpacity
+              style={styles.messageBtn}
+              onPress={() => messageParty(d.transaction_id, d.renter_id, d.renter_name)}
+            >
+              <ShieldCheck size={13} color={colors.primary} />
+              <Text style={styles.messageBtnText}>Message Renter</Text>
+            </TouchableOpacity>
+          )}
+          {d.lender_id !== currentUserId && (
+            <TouchableOpacity
+              style={styles.messageBtn}
+              onPress={() => messageParty(d.transaction_id, d.lender_id, d.lender_name)}
+            >
+              <ShieldCheck size={13} color={colors.primary} />
+              <Text style={styles.messageBtnText}>Message Lender</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Pick a side first — nothing is sent yet. The relevant fields for
