@@ -4,7 +4,7 @@ import {
   ActivityIndicator, Alert, TextInput, KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { signInWithGoogle, signInWithEmail, signUpWithEmail } from '../services/auth.service';
+import { signInWithGoogle, signInWithApple, signInWithEmail, signUpWithEmail } from '../services/auth.service';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { ChevronLeft } from 'lucide-react-native';
@@ -24,6 +24,22 @@ export default function LoginScreen() {
       await signInWithGoogle();
     } catch (error: any) {
       Alert.alert('Error', error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Not functional until Apple's provider is configured in Supabase (needs
+  // a paid Apple Developer Program account — see auth.service.ts). Left
+  // wired up rather than disabled so the native Apple sheet + full flow is
+  // ready to go the moment that account exists — the only failure mode
+  // until then is Supabase itself rejecting the identity token.
+  async function handleApple() {
+    try {
+      setLoading(true);
+      await signInWithApple();
+    } catch (error: any) {
+      if (error.code !== 'ERR_REQUEST_CANCELED') Alert.alert('Error', error.message);
     } finally {
       setLoading(false);
     }
@@ -80,9 +96,11 @@ export default function LoginScreen() {
               <Text style={styles.socialButtonText}>Continue with Google</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.socialButton} disabled>
-              <Text style={[styles.socialButtonText, styles.disabledText]}>Continue with Apple</Text>
-            </TouchableOpacity>
+            {Platform.OS === 'ios' && (
+              <TouchableOpacity style={styles.socialButton} onPress={handleApple} disabled={loading}>
+                <Text style={styles.socialButtonText}>Continue with Apple</Text>
+              </TouchableOpacity>
+            )}
 
             <View style={styles.dividerContainer}>
               <View style={styles.dividerLine} />
@@ -170,7 +188,6 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   socialButtonText: { color: colors.text, fontSize: 14 },
-  disabledText: { color: colors.textFaint },
   dividerContainer: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
   dividerLine: { flex: 1, height: 1, backgroundColor: colors.cardAlt },
   dividerText: { color: colors.textFaint, fontSize: 12 },

@@ -14,7 +14,8 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.swipeandrentapp"
+      "bundleIdentifier": "com.swipeandrentapp",
+      "usesAppleSignIn": true
     },
     "android": {
       "package": "com.swipeandrentapp",
