@@ -10,7 +10,7 @@ import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import {
   ShoppingCart, Package, Repeat, ChevronLeft,
-  Camera, Tent, Wrench, Gamepad2, Music, Bike, Utensils, Palette, Sailboat, Snowflake, Film, Mountain,
+  Camera, Tent, Wrench, Gamepad2, Music, Bike, Utensils, Palette, Sailboat, Snowflake, Film, Mountain, Shirt,
   type LucideIcon,
 } from 'lucide-react-native';
 
@@ -27,6 +27,7 @@ const INTERESTS: { value: string; label: string; icon: LucideIcon }[] = [
   { value: 'gaming', label: 'Gaming', icon: Gamepad2 },
   { value: 'music', label: 'Music', icon: Music },
   { value: 'sports', label: 'Sports', icon: Bike },
+  { value: 'clothing', label: 'Clothing & Fashion', icon: Shirt },
   { value: 'cooking', label: 'Cooking', icon: Utensils },
   { value: 'art', label: 'Art & Craft', icon: Palette },
   { value: 'water_sports', label: 'Water Sports', icon: Sailboat },

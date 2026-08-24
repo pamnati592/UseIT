@@ -271,6 +271,7 @@ const CATEGORIES: { key: string; label: string }[] = [
   { key: 'gaming',      label: 'Gaming'   },
   { key: 'sports',      label: 'Sports'   },
   { key: 'music',       label: 'Music'    },
+  { key: 'clothing',    label: 'Clothing' },
   { key: 'biking',      label: 'Biking'   },
   { key: 'cooking',     label: 'Cooking'  },
   { key: 'art',         label: 'Art'      },

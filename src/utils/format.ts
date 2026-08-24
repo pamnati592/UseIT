@@ -27,6 +27,7 @@ const CATEGORY_IMPACT_BASE: Record<string, number> = {
   sports: 3.7,
   photography: 3.6,
   diy: 3.5,
+  clothing: 3.4,
   music: 3.3,
   gaming: 3.2,
   other: 3.0,

@@ -14,7 +14,7 @@ import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { X, Sparkles } from 'lucide-react-native';
 
-const CATEGORIES = ['photography', 'gaming', 'camping', 'diy', 'music', 'sports', 'other'];
+const CATEGORIES = ['photography', 'gaming', 'camping', 'diy', 'music', 'sports', 'clothing', 'other'];
 const MAX_ITEM_PHOTOS = 6;
 
 type PhotoAsset = {

@@ -1,6 +1,6 @@
 import {
   Camera, Gamepad2, Tent, Wrench, Music, Dumbbell, Package,
-  Bike, Utensils, Palette, Sailboat, Snowflake, Film,
+  Bike, Utensils, Palette, Sailboat, Snowflake, Film, Shirt,
   type LucideIcon,
 } from 'lucide-react-native';
 
@@ -13,6 +13,7 @@ const CATEGORY_ICON: Record<string, LucideIcon> = {
   diy: Wrench,
   music: Music,
   sports: Dumbbell,
+  clothing: Shirt,
   // extended interest tags (onboarding)
   biking: Bike,
   cooking: Utensils,

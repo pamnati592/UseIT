@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const CATEGORIES = ['photography', 'gaming', 'camping', 'diy', 'music', 'sports', 'other'];
+const CATEGORIES = ['photography', 'gaming', 'camping', 'diy', 'music', 'sports', 'clothing', 'other'];
 
 // Backlog S: AI auto-fill a single item's form fields from its own photo —
 // distinct from Q (one photo of a pile of objects -> multiple detected
