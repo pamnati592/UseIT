@@ -1,11 +1,12 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text, View } from 'react-native';
+import { Text, View, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NavigatorScreenParams } from '@react-navigation/native';
-import { House, Sparkles, MessageCircle, User, Plus, type LucideIcon } from 'lucide-react-native';
+import { House, Sparkles, MessageCircle, User, Plus, Lock, type LucideIcon } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { ConversationsProvider, useConversations } from '../contexts/ConversationsContext';
 import { AdminModeProvider } from '../contexts/AdminModeContext';
+import { BiometricProvider, useBiometric } from '../contexts/BiometricContext';
 import HomeStackNavigator from './HomeStackNavigator';
 import ChatsStackNavigator from './ChatsStackNavigator';
 import type { ChatsStackParamList } from './ChatsStackNavigator';
@@ -44,7 +45,9 @@ export default function MainTabNavigator() {
   return (
     <ConversationsProvider>
       <AdminModeProvider>
-        <MainTabNavigatorInner />
+        <BiometricProvider>
+          <MainTabNavigatorInner />
+        </BiometricProvider>
       </AdminModeProvider>
     </ConversationsProvider>
   );
@@ -53,12 +56,24 @@ export default function MainTabNavigator() {
 function MainTabNavigatorInner() {
   const { colors } = useTheme();
   const { totalUnreadCount } = useConversations();
+  const { isReadOnly, checking, retry } = useBiometric();
   // app.json sets edgeToEdgeEnabled, so the tab bar draws underneath Android's
   // navigation bar / gesture pill. A hardcoded height put the tab labels behind it;
   // the bottom inset has to be added to both the height and the padding.
   const insets = useSafeAreaInsets();
 
   return (
+    <>
+      {/* Spec 4.2: without biometric, read-only mode — browsing stays fully
+          usable, this is just the persistent reminder + a way back in. */}
+      {!checking && isReadOnly && (
+        <TouchableOpacity style={[styles.readOnlyBanner, { backgroundColor: colors.warningBg }]} onPress={retry}>
+          <Lock size={13} color={colors.warning} />
+          <Text style={[styles.readOnlyBannerText, { color: colors.warning }]}>
+            Read-only mode — tap to verify with Face ID / Touch ID
+          </Text>
+        </TouchableOpacity>
+      )}
       <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
@@ -111,5 +126,14 @@ function MainTabNavigatorInner() {
       />
       <Tab.Screen name="Profile" component={ProfileStackNavigator} />
       </Tab.Navigator>
+    </>
   );
 }
+
+const styles = StyleSheet.create({
+  readOnlyBanner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 8, paddingHorizontal: 16,
+  },
+  readOnlyBannerText: { fontSize: 12, fontWeight: '600' },
+});

@@ -59,7 +59,13 @@
           "isIosBackgroundLocationEnabled": false
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "SwipeAndRent uses Face ID to verify it's really you before granting full access."
+        }
+      ]
     ]
   }
 }

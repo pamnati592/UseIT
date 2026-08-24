@@ -8,6 +8,7 @@ import { Calendar } from 'react-native-calendars';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { HomeStackParamList } from '../navigation/HomeStackNavigator';
 import { supabase } from '../services/supabase';
+import { useBiometric } from '../contexts/BiometricContext';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
@@ -71,6 +72,7 @@ function buildMarkedDates(
 
 export default function ItemDetailScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
+  const { isReadOnly } = useBiometric();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { item, openRent, prefilledStart, prefilledEnd } = route.params;
   const insets = useSafeAreaInsets();
@@ -203,6 +205,11 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
 
   async function sendRentalRequest() {
     if (!selectedStart || !selectedEnd) return;
+    // Spec 4.2: read-only mode without biometric verification.
+    if (isReadOnly) {
+      Alert.alert('Verify to continue', 'Sending a rental request needs Face ID / Touch ID verification first — see the banner at the top of the app.');
+      return;
+    }
     setRentLoading(true);
     try {
       const days = daysBetween(selectedStart, selectedEnd);
@@ -294,6 +301,11 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
   // Buy doesn't pay on tap — it opens the Deal Board card in chat, where the
   // buyer pays in person once they've actually received the item.
   async function handleBuy() {
+    // Spec 4.2: read-only mode without biometric verification.
+    if (isReadOnly) {
+      Alert.alert('Verify to continue', 'Buying an item needs Face ID / Touch ID verification first — see the banner at the top of the app.');
+      return;
+    }
     setBuyLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
