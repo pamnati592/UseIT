@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo} from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Alert,
-  ActivityIndicator, Modal, FlatList, Image, Switch,
+  ActivityIndicator, Modal, FlatList, Image, Switch, Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -18,6 +18,7 @@ import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
 import {
   ChevronRight, MapPin, Pencil, Package, ClipboardList, Heart, Clock, Repeat, Moon, Sun, LogOut, ShieldCheck, Wallet, CircleCheck,
+  Download, Trash2,
 } from 'lucide-react-native';
 
 type Nav = NativeStackNavigationProp<ProfileStackParamList, 'ProfileMain'>;
@@ -58,6 +59,8 @@ export default function ProfileScreen() {
   const [chargesEnabled, setChargesEnabled] = useState(false);
   const [detailsSubmitted, setDetailsSubmitted] = useState(false);
   const [payoutsLoading, setPayoutsLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   const activeLabel = TEST_ACCOUNTS.find(a => a.email === userEmail)?.label ?? null;
 
@@ -109,6 +112,88 @@ export default function ProfileScreen() {
         },
       },
     ]);
+  }
+
+  // GDPR right to export (spec 5.2). Pure client-side reads through each
+  // table's existing RLS ("own rows" policies already used everywhere else
+  // in the app) rather than a service-role edge function — nothing here
+  // needs privileges the user doesn't already have over their own data.
+  async function handleExportData() {
+    if (!userId) return;
+    setMenuOpen(false);
+    setExporting(true);
+    try {
+      const [profile, myItems, transactions, purchases, ratingsGiven, ratingsReceived, reviewsGiven, supportThreads] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', userId).single(),
+        supabase.from('items').select('*').eq('owner_id', userId),
+        supabase.from('transactions').select('*').or(`renter_id.eq.${userId},lender_id.eq.${userId}`),
+        supabase.from('purchases').select('*').or(`buyer_id.eq.${userId},seller_id.eq.${userId}`),
+        supabase.from('ratings').select('*').eq('reviewer_id', userId),
+        supabase.from('ratings').select('*').eq('reviewee_id', userId),
+        supabase.from('item_reviews').select('*').eq('reviewer_id', userId),
+        supabase.from('support_threads').select('*').eq('user_id', userId),
+      ]);
+
+      const payload = {
+        exported_at: new Date().toISOString(),
+        profile: profile.data,
+        items: myItems.data ?? [],
+        transactions: transactions.data ?? [],
+        purchases: purchases.data ?? [],
+        ratings_given: ratingsGiven.data ?? [],
+        ratings_received: ratingsReceived.data ?? [],
+        item_reviews_given: reviewsGiven.data ?? [],
+        support_threads: supportThreads.data ?? [],
+      };
+
+      await Share.share({ message: JSON.stringify(payload, null, 2), title: 'SwipeAndRent data export' });
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Could not export your data.');
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  // Apple guideline 5.1.1v / spec 5.2 GDPR right to deletion. The real work
+  // (anonymize + hide listings + permanent auth ban) is server-side, see
+  // supabase/functions/delete-account — this just confirms twice (given how
+  // irreversible it is) and signs the device out once it succeeds.
+  function handleDeleteAccount() {
+    Alert.alert(
+      'Delete account?',
+      'This removes your personal info and permanently blocks you from logging back in. Your rental history stays visible to the people you transacted with, but anonymized. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue', style: 'destructive', onPress: () => {
+            Alert.alert(
+              'Are you absolutely sure?',
+              'Last chance to back out.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete My Account', style: 'destructive', onPress: async () => {
+                    setMenuOpen(false);
+                    setDeletingAccount(true);
+                    const { data, error } = await supabase.functions.invoke('delete-account');
+                    if (error) {
+                      const body = await error.context?.json?.().catch(() => null);
+                      setDeletingAccount(false);
+                      Alert.alert('Error', body?.error ?? error.message);
+                      return;
+                    }
+                    if (data?.error) { setDeletingAccount(false); Alert.alert('Error', data.error); return; }
+                    await AsyncStorage.removeItem(CURRENT_KEY);
+                    await supabase.auth.signOut();
+                    setDeletingAccount(false);
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
   }
 
   async function switchTo(label: string, email: string, password: string) {
@@ -386,6 +471,7 @@ export default function ProfileScreen() {
               { Icon: Clock,         label: 'History',    onPress: () => { setMenuOpen(false); navigation.navigate('History'); } },
               ...(isAdmin ? [{ Icon: ShieldCheck, label: 'Admin Console', onPress: () => { setMenuOpen(false); navigation.navigate('AdminHome'); } }] : []),
               { Icon: Repeat,        label: 'Switch User', onPress: () => { setMenuOpen(false); setSwitchModal(true); } },
+              { Icon: Download,      label: 'Export My Data', onPress: handleExportData },
             ].map(({ Icon, label, onPress }) => (
               <TouchableOpacity key={label} style={styles.sheetRow} onPress={onPress}>
                 <View style={styles.sheetRowIcon}><Icon size={20} color={colors.text} /></View>
@@ -416,6 +502,18 @@ export default function ProfileScreen() {
                 : <View style={styles.sheetRowIcon}><LogOut size={20} color={colors.dangerSoft} /></View>
               }
               <Text style={[styles.sheetRowLabel, styles.sheetRowLabelDanger]}>Log out</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.sheetRow, styles.sheetRowDanger, deletingAccount && { opacity: 0.5 }]}
+              onPress={handleDeleteAccount}
+              disabled={deletingAccount}
+            >
+              {deletingAccount
+                ? <ActivityIndicator color={colors.dangerSoft} size="small" style={{ marginRight: 12 }} />
+                : <View style={styles.sheetRowIcon}><Trash2 size={20} color={colors.dangerSoft} /></View>
+              }
+              <Text style={[styles.sheetRowLabel, styles.sheetRowLabelDanger]}>Delete Account</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>

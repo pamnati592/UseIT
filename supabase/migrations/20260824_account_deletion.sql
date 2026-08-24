@@ -1,0 +1,11 @@
+-- Apple hard-rejects without in-app account deletion (guideline 5.1.1v);
+-- spec 5.2 wants GDPR right to deletion too. profiles.id has ON DELETE
+-- CASCADE from auth.users, which itself cascades further into
+-- conversations/messages/items/reviews/purchases/ratings/disputes (all
+-- CASCADE on profiles.id) -- actually deleting the row would silently wipe
+-- a counterparty's shared conversation/review history along with it. The
+-- safe approach is anonymize-in-place (keeps the row and every FK'd
+-- relationship intact) + a permanent auth ban (blocks login without
+-- touching the row at all). is_deleted distinguishes a real user named
+-- "Deleted User" from an actually-deleted account.
+alter table public.profiles add column is_deleted boolean not null default false;
