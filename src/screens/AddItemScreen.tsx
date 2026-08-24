@@ -34,7 +34,7 @@ export default function AddItemScreen() {
   const [salePrice, setSalePrice] = useState('');
   const [verificationPhoto, setVerificationPhoto] = useState<PhotoAsset | null>(null);
   const [itemPhotos, setItemPhotos] = useState<PhotoAsset[]>([]);
-  const [loading, setLoading] = useState<'pending' | 'live' | null>(null);
+  const [loading, setLoading] = useState<'pending' | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
 
   async function pickFromCamera(multi = false): Promise<PhotoAsset | null> {
@@ -155,7 +155,7 @@ export default function AddItemScreen() {
     return supabase.storage.from('item-images').getPublicUrl(fileName).data.publicUrl;
   }
 
-  async function handleSubmit(status: 'pending' | 'live') {
+  async function handleSubmit() {
     const missing = [
       !title.trim() && 'Title',
       !category && 'Category',
@@ -170,7 +170,7 @@ export default function AddItemScreen() {
     }
 
     try {
-      setLoading(status);
+      setLoading('pending');
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError) throw userError;
       if (!user) throw new Error('Not authenticated');
@@ -197,7 +197,7 @@ export default function AddItemScreen() {
         daily_price: parseFloat(dailyPrice),
         sale_price: forSale && salePrice ? parseFloat(salePrice) : null,
         city: cityValue!.city,
-        verification_status: status,
+        verification_status: 'pending',
         verification_image_url: verificationUrl,
         photos: photoUrls,
         location: `POINT(${cityValue!.lng} ${cityValue!.lat})`,
@@ -206,12 +206,7 @@ export default function AddItemScreen() {
 
       if (error) throw error;
 
-      Alert.alert(
-        status === 'live' ? 'Item listed!' : 'Item submitted',
-        status === 'live'
-          ? 'Your item is now live in the feed.'
-          : 'Your item is pending review.',
-      );
+      Alert.alert('Item submitted', 'Your item is pending review.');
       setTitle(''); setCategory(''); setDescription('');
       setDailyPrice(''); setCityValue(null); setPickupLocation('');
       setForSale(false); setSalePrice('');
@@ -334,12 +329,12 @@ export default function AddItemScreen() {
             <Image source={{ uri: verificationPhoto.uri }} style={styles.verificationPreview} resizeMode="cover" />
           )}
 
-          <TouchableOpacity style={[styles.button, styles.buttonDisabled]} disabled>
+          <TouchableOpacity
+            style={[styles.button, loading !== null && styles.buttonDisabled]}
+            onPress={handleSubmit}
+            disabled={loading !== null}
+          >
             {loading === 'pending' ? <ActivityIndicator color={colors.btnText} /> : <Text style={styles.buttonText}>Submit for Review</Text>}
-          </TouchableOpacity>
-
-          <TouchableOpacity style={[styles.buttonDev, loading !== null && styles.buttonDisabled]} onPress={() => handleSubmit('live')} disabled={loading !== null}>
-            {loading === 'live' ? <ActivityIndicator color={colors.warning} /> : <Text style={styles.buttonDevText}>Go Live (Testing Only)</Text>}
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -387,6 +382,4 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   button: { marginTop: 28, height: 52, backgroundColor: colors.btn, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   buttonDisabled: { opacity: 0.4 },
   buttonText: { color: colors.btnText, fontSize: 16, fontWeight: '700' },
-  buttonDev: { height: 44, borderRadius: 10, borderWidth: 1, borderColor: colors.warning, alignItems: 'center', justifyContent: 'center' },
-  buttonDevText: { color: colors.warning, fontSize: 14, fontWeight: '600' },
 });
