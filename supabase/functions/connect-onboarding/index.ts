@@ -62,10 +62,14 @@ serve(async (req) => {
       await admin.from('profiles').update({ stripe_connect_account_id: accountId }).eq('id', user.id);
     }
 
+    // Stripe rejects custom app schemes here outright ("Not a valid URL") —
+    // only http(s) is accepted. connect-return is a tiny hosted page that
+    // immediately redirects into the real swipeandrent:// deep link.
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const accountLink = await stripe.accountLinks.create({
       account: accountId,
-      refresh_url: 'swipeandrent://connect-return?refresh=true',
-      return_url: 'swipeandrent://connect-return',
+      refresh_url: `${supabaseUrl}/functions/v1/connect-return?refresh=true`,
+      return_url: `${supabaseUrl}/functions/v1/connect-return`,
       type: 'account_onboarding',
     });
 
