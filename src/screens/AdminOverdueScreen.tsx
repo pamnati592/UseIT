@@ -64,7 +64,7 @@ export default function AdminOverdueScreen({ navigation }: Props) {
     const raw = fineAmounts[row.transaction_id]?.trim();
     const amount = Number(raw);
     if (!raw || !Number.isFinite(amount) || amount <= 0) {
-      Alert.alert('Enter an amount', 'Set the fine amount before charging — this is not calculated automatically.');
+      Alert.alert('Enter an amount', 'Set the penalty amount before charging — this is not calculated automatically.');
       return;
     }
     Alert.alert(
@@ -154,7 +154,7 @@ export default function AdminOverdueScreen({ navigation }: Props) {
             <View style={styles.cliffRow}>
               <TextInput
                 style={[styles.fineInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.bg }]}
-                placeholder="Fine amount (₪)"
+                placeholder="Penalty amount (₪)"
                 placeholderTextColor={colors.textMuted}
                 keyboardType="numeric"
                 value={fineAmounts[row.transaction_id] ?? ''}

@@ -164,7 +164,7 @@ export default function RatingScreen({ navigation, route }: Props) {
             >
               {submitting
                 ? <ActivityIndicator color={colors.btnText} />
-                : <Text style={styles.primaryBtnText}>Submit Rating</Text>
+                : <Text style={styles.primaryBtnText}>Submit Review</Text>
               }
             </TouchableOpacity>
           </>

@@ -247,7 +247,7 @@ export default function QRScanScreen({ navigation, route }: Props) {
     }
   }
 
-  const title = phase === 'pickup' ? 'Hand Off' : 'Complete Return';
+  const title = phase === 'pickup' ? 'Pickup Handoff' : 'Return Handoff';
 
   return (
     <SafeAreaView style={styles.container}>

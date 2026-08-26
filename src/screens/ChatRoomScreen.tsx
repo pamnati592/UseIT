@@ -537,7 +537,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   // QRDisplayScreen and QRScanScreen's return flow both route here rather than
   // collecting evidence themselves — this is the one canonical dispute screen (SAS).
   // Skipped for an admin (see isAdmin above) — it opens the same modal as the
-  // Contact UseIT button, "Message UseIT" included.
+  // Get Help button, "Message UseIT" included.
   useEffect(() => {
     if (!reportIssueTransactionId || isAdmin) return;
     handleReportIssue(reportIssueTransactionId);
@@ -1208,7 +1208,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
               ) && (
                 <TouchableOpacity style={styles.messageSupportBtn} onPress={() => handleReportIssue(tx.id)}>
                   <ShieldCheck size={14} color={colors.primary} />
-                  <Text style={styles.messageSupportBtnText}>Contact UseIT</Text>
+                  <Text style={styles.messageSupportBtnText}>Get Help</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -1368,7 +1368,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                     <ShieldCheck size={24} color={colors.primary} />
                   </View>
                 </View>
-                <Text style={styles.modalTitle}>Contact UseIT</Text>
+                <Text style={styles.modalTitle}>Get Help</Text>
                 <Text style={styles.modalBody}>
                   We recommend resolving this directly with {otherUserName} first — most issues get sorted out faster in chat.
                 </Text>
