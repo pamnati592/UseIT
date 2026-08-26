@@ -4,7 +4,7 @@
 
 # SwipeAndRent
 
-**A P2P rental marketplace — swipe to discover nearby gear, chat with the owner, and rent it securely.**
+**Airbnb for your idle stuff — swipe to discover nearby gear, chat with the owner, and rent it securely.**
 
 [![React Native](https://img.shields.io/badge/React_Native-20232A?style=flat&logo=react&logoColor=61DAFB)](https://reactnative.dev/)
 [![Expo](https://img.shields.io/badge/Expo-000020?style=flat&logo=expo&logoColor=white)](https://expo.dev/)
