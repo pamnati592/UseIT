@@ -5,6 +5,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { supabase } from '../services/supabase';
+import { formatDateRange, formatPrice } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
@@ -14,7 +15,7 @@ type RoleTab = 'renting' | 'lending';
 
 // Only these three — a rejected/cancelled-before-payment request never became a
 // real rental and doesn't belong in history (spec: "completed/cancelled/disputed").
-const HISTORY_STATUSES = ['completed', 'cancelled', 'disputed'];
+const HISTORY_STATUSES = ['completed', 'cancelled', 'disputed'] as const;
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
   completed: { label: 'Completed', color: '#6b7280', bg: 'rgba(107,114,128,0.15)' },
@@ -89,7 +90,27 @@ export default function HistoryScreen() {
 
         if (!active) return;
 
-        const toRentalRow = (t: any, otherField: 'lender' | 'renter'): RentalRow => ({
+        type RentalQueryRow = {
+          id: string;
+          status: string;
+          start_date: string;
+          end_date: string;
+          total_price: number;
+          created_at: string;
+          items: { title: string; photos: string[] | null; category: string } | null;
+          lender?: { full_name: string | null } | null;
+          renter?: { full_name: string | null } | null;
+        };
+
+        type SaleQueryRow = {
+          id: string;
+          price: number;
+          created_at: string;
+          items: { title: string; photos: string[] | null; category: string } | null;
+          buyer?: { full_name: string | null } | null;
+        };
+
+        const toRentalRow = (t: RentalQueryRow, otherField: 'lender' | 'renter'): RentalRow => ({
           kind: 'rental',
           id: t.id,
           status: t.status,
@@ -103,7 +124,7 @@ export default function HistoryScreen() {
           sortDate: t.created_at,
         });
 
-        const toSaleRow = (p: any): SaleRow => ({
+        const toSaleRow = (p: SaleQueryRow): SaleRow => ({
           kind: 'sale',
           id: p.id,
           itemTitle: p.items?.title ?? 'Item',
@@ -114,10 +135,10 @@ export default function HistoryScreen() {
           sortDate: p.created_at,
         });
 
-        setRentingRows(((rentingTx.data as any[]) ?? []).map(t => toRentalRow(t, 'lender')));
+        setRentingRows((rentingTx.data ?? []).map(t => toRentalRow(t as RentalQueryRow, 'lender')));
 
-        const lendingRentals = ((lendingTx.data as any[]) ?? []).map(t => toRentalRow(t, 'renter'));
-        const soldItems = ((sales.data as any[]) ?? []).map(toSaleRow);
+        const lendingRentals = (lendingTx.data ?? []).map(t => toRentalRow(t as RentalQueryRow, 'renter'));
+        const soldItems = (sales.data ?? []).map(p => toSaleRow(p as SaleQueryRow));
         setLendingRows(
           [...lendingRentals, ...soldItems].sort(
             (a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime()
@@ -129,11 +150,6 @@ export default function HistoryScreen() {
       return () => { active = false; };
     }, [])
   );
-
-  function formatDateRange(start: string, end: string): string {
-    const fmt = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-    return `${fmt(start)} → ${fmt(end)}`;
-  }
 
   function formatDate(iso: string): string {
     return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -161,14 +177,14 @@ export default function HistoryScreen() {
           </View>
           {row.kind === 'rental' ? (
             <>
-              <Text style={styles.rowSub}>{formatDateRange(row.startDate, row.endDate)} · ₪{row.totalPrice}</Text>
+              <Text style={styles.rowSub}>{formatDateRange(row.startDate, row.endDate)} · {formatPrice(row.totalPrice)}</Text>
               <Text style={styles.rowOther}>
                 {roleTab === 'renting' ? `Lender: ${row.otherName}` : `Renter: ${row.otherName}`}
               </Text>
             </>
           ) : (
             <>
-              <Text style={styles.rowSub}>Sold for ₪{row.price}</Text>
+              <Text style={styles.rowSub}>Sold for {formatPrice(row.price)}</Text>
               <Text style={styles.rowOther}>Buyer: {row.buyerName}</Text>
             </>
           )}

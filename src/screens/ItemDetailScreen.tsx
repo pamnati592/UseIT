@@ -13,11 +13,17 @@ import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { ChevronLeft, ChevronRight, MapPin, Tag, ShoppingCart, Heart, MessageCircle, X, Leaf, Star } from 'lucide-react-native';
-import { getImpactScore } from '../utils/format';
+import { getImpactScore, formatDateRange, formatPrice } from '../utils/format';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const TODAY = new Date().toISOString().split('T')[0];
 const STAR_COLOR = '#f59e0b';
+
+// Both RPCs `returns json` in Postgres (json_build_object), so Supabase's
+// generated types can't infer their shape — these mirror the literal
+// json_build_object(...) calls in their migrations.
+type CreateRentalRequestResult = { conversation_id: string; lender_name: string };
+type CreatePurchaseResult = { conversation_id: string; purchase_id: string };
 
 type Props = NativeStackScreenProps<HomeStackParamList, 'ItemDetail'>;
 
@@ -215,9 +221,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
       const days = daysBetween(selectedStart, selectedEnd);
       const totalPrice = days * item.daily_price;
 
-      const fmt = (d: string) =>
-        new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-      const message = `📅 Rental request: ${fmt(selectedStart)} → ${fmt(selectedEnd)} (${days} day${days > 1 ? 's' : ''}) · ₪${totalPrice}. Awaiting your approval.`;
+      const message = `📅 Rental request: ${formatDateRange(selectedStart, selectedEnd)} (${days} day${days > 1 ? 's' : ''}) · ${formatPrice(totalPrice)}. Awaiting your approval.`;
 
       // Single atomic RPC — conversation + transaction + message in one DB transaction
       const { data, error } = await supabase.rpc('create_rental_request', {
@@ -229,6 +233,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
         p_message:    message,
       });
       if (error) throw error;
+      const result = data as CreateRentalRequestResult;
 
       setRentModalVisible(false);
       // Signal AI Planner to tick this item as Requested
@@ -238,9 +243,9 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
       (navigation as any).getParent()?.navigate('Chats', {
         screen: 'ChatRoom',
         params: {
-          conversationId: data.conversation_id,
+          conversationId: result.conversation_id,
           itemTitle:      item.title,
-          otherUserName:  data.lender_name,
+          otherUserName:  result.lender_name,
         },
       });
     } catch (e: any) {
@@ -314,6 +319,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
 
       const { data, error } = await supabase.rpc('create_purchase', { p_item_id: item.id });
       if (error) throw error;
+      const result = data as CreatePurchaseResult;
 
       const { data: sellerProfile } = await supabase
         .from('profiles')
@@ -324,7 +330,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
       (navigation as any).getParent()?.navigate('Chats', {
         screen: 'ChatRoom',
         params: {
-          conversationId: data.conversation_id,
+          conversationId: result.conversation_id,
           itemTitle: item.title,
           otherUserName: (sellerProfile as any)?.full_name ?? 'Seller',
           initialTab: 'deal',
@@ -422,9 +428,9 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
             )}
 
             <View style={styles.metaRow}>
-              <Text style={styles.price}>₪{item.daily_price}/day</Text>
+              <Text style={styles.price}>{formatPrice(item.daily_price)}/day</Text>
               {item.sale_price != null && (
-                <Text style={styles.salePrice}>Buy: ₪{item.sale_price}</Text>
+                <Text style={styles.salePrice}>Buy: {formatPrice(item.sale_price)}</Text>
               )}
             </View>
 
@@ -601,9 +607,9 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
           {totalDays != null && totalPrice != null && (
             <View style={styles.summaryBox}>
               <Text style={styles.summaryText}>
-                {totalDays} day{totalDays > 1 ? 's' : ''} × ₪{item.daily_price}/day
+                {totalDays} day{totalDays > 1 ? 's' : ''} × {formatPrice(item.daily_price)}/day
               </Text>
-              <Text style={styles.summaryTotal}>Total: ₪{totalPrice}</Text>
+              <Text style={styles.summaryTotal}>Total: {formatPrice(totalPrice)}</Text>
             </View>
           )}
 

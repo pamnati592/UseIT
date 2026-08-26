@@ -12,6 +12,7 @@ import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator'
 import type { MainTabParamList } from '../navigation/MainTabNavigator';
 import { supabase } from '../services/supabase';
 import type { Item } from '../types/item';
+import { formatPrice } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
@@ -41,8 +42,8 @@ export default function WishlistScreen() {
       .order('created_at', { ascending: false });
 
     const fetched: Item[] = (data ?? [])
-      .map((row: any) => row.items)
-      .filter(Boolean);
+      .map(row => row.items)
+      .filter(Boolean) as Item[];
 
     setItems(fetched);
     setLoading(false);
@@ -77,7 +78,7 @@ export default function WishlistScreen() {
         </View>
         <View style={styles.cardInfo}>
           <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
-          <Text style={styles.cardSub}>{item.city ?? ''} · ₪{item.daily_price}/day</Text>
+          <Text style={styles.cardSub}>{item.city ?? ''} · {formatPrice(item.daily_price)}/day</Text>
         </View>
         <TouchableOpacity style={styles.removeBtn} onPress={() => removeFromWishlist(item.id)} hitSlop={8}>
           <X size={18} color={colors.textMuted} />

@@ -12,6 +12,7 @@ import type { MainTabParamList } from '../navigation/MainTabNavigator';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
+import { formatPrice } from '../utils/format';
 import {
   Sparkles, Calendar as CalendarIcon, ArrowRight, X, Search, Check, Heart,
   type LucideIcon,
@@ -278,7 +279,7 @@ export default function AIPlannerScreen() {
                         <Text style={[styles.cardTitle, isDone && styles.cardTitleDone]} numberOfLines={1}>
                           {item.title}
                         </Text>
-                        <Text style={styles.cardMeta}>{item.city ?? ''} · ₪{item.daily_price}/day</Text>
+                        <Text style={styles.cardMeta}>{item.city ?? ''} · {formatPrice(item.daily_price)}/day</Text>
                         {!isDone && (
                           <Text style={styles.cardReason} numberOfLines={2}>{item.reason}</Text>
                         )}

@@ -47,7 +47,7 @@ export default function RatingScreen({ navigation, route }: Props) {
   async function submitRating() {
     setSubmitting(true);
     try {
-      const comment = review.trim() || null;
+      const comment = review.trim() || undefined;
       const { error } = await supabase.rpc('submit_rating', {
         p_tx: transactionId,
         p_score: stars,
@@ -164,7 +164,7 @@ export default function RatingScreen({ navigation, route }: Props) {
             >
               {submitting
                 ? <ActivityIndicator color={colors.btnText} />
-                : <Text style={styles.primaryBtnText}>Submit Rating</Text>
+                : <Text style={styles.primaryBtnText}>Submit Review</Text>
               }
             </TouchableOpacity>
           </>

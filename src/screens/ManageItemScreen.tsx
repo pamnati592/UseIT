@@ -8,6 +8,7 @@ import { Calendar } from 'react-native-calendars';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { supabase } from '../services/supabase';
+import { formatShortDate } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { ChevronLeft, X } from 'lucide-react-native';
@@ -40,9 +41,7 @@ function statusColor(colors: ThemeColors, status: string) {
   return p.pending;
 }
 
-function fmt(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-}
+const fmt = formatShortDate;
 
 function expandRange(from: string, to: string): string[] {
   const dates: string[] = [];
@@ -121,7 +120,7 @@ export default function ManageItemScreen({ navigation, route }: Props) {
     ]);
 
     setRentalRanges(
-      (txRes.data ?? []).map((t: any) => ({
+      (txRes.data ?? []).map(t => ({
         id: t.id,
         start: t.start_date.split('T')[0],
         end: t.end_date.split('T')[0],

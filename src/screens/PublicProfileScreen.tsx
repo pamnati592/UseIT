@@ -12,6 +12,7 @@ import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { ChevronLeft, ChevronRight, MapPin, Check, X, TriangleAlert, Flag } from 'lucide-react-native';
+import { formatPrice } from '../utils/format';
 
 const REPORT_REASONS = ['Harassment', 'Scam or fraud', 'Inappropriate content', 'Item not as described', 'Other'];
 
@@ -20,24 +21,32 @@ type Props = NativeStackScreenProps<HomeStackParamList, 'PublicProfile'>;
 export default function PublicProfileScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { userId, userName, approveTransactionId, requestSummary } = route.params;
+  const { userId, userName, approveTransactionId, requestSummary, conversationId, itemTitle } = route.params;
   const [decideLoading, setDecideLoading] = useState(false);
   const [decided, setDecided] = useState<'approved' | 'declined' | null>(null);
 
-  async function decideRequest(status: 'approved' | 'declined') {
-    if (!approveTransactionId) return;
+  // Approving/declining doesn't happen here — it's handed back to ChatRoomScreen,
+  // the one canonical place every rental action executes (SAS), so the chat
+  // system-message and unread-badge side effects always fire the same way
+  // regardless of whether the decision was made in chat or from this shortcut.
+  function decideRequest(status: 'approved' | 'declined') {
+    if (!approveTransactionId || !conversationId) return;
     setDecideLoading(true);
-    const update: Record<string, unknown> = { status };
-    if (status === 'approved') update.approved_at = new Date().toISOString();
-    const { error } = await supabase.from('transactions').update(update).eq('id', approveTransactionId);
+    setDecided(status);
     setDecideLoading(false);
-    if (!error) {
-      setDecided(status);
-      // This screen is reachable from both HomeStack and ProfileStack (with no
-      // shared root screen name), so an unguarded fallback jumps to the Home
-      // tab instead of a specific stack root — always valid either way.
-      setTimeout(() => navigation.canGoBack() ? navigation.goBack() : (navigation as any).getParent()?.navigate('HomeStack'), 900);
-    }
+    setTimeout(() => {
+      (navigation as any).getParent()?.navigate('Chats', {
+        screen: 'ChatRoom',
+        params: {
+          conversationId,
+          itemTitle: itemTitle ?? '',
+          otherUserName: userName,
+          initialTab: 'deal',
+          approveTransactionId: status === 'approved' ? approveTransactionId : undefined,
+          rejectTransactionId: status === 'declined' ? approveTransactionId : undefined,
+        },
+      });
+    }, 900);
   }
   const [items, setItems]           = useState<Item[]>([]);
   const [city, setCity]             = useState<string | null>(null);
@@ -64,7 +73,7 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
     const { error } = await supabase.rpc('report_user', {
       p_reported_user_id: userId,
       p_reason: reportReason,
-      p_description: reportDescription.trim() || null,
+      p_description: reportDescription.trim() || undefined,
     });
     setReportSubmitting(false);
     if (error) { Alert.alert('Error', error.message); return; }
@@ -132,7 +141,7 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
         }
         <View style={styles.itemInfo}>
           <Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text>
-          <Text style={styles.itemPrice}>₪{item.daily_price}/day</Text>
+          <Text style={styles.itemPrice}>{formatPrice(item.daily_price)}/day</Text>
           {item.city && (
             <View style={styles.itemCityRow}>
               <MapPin size={12} color={colors.textMuted} />

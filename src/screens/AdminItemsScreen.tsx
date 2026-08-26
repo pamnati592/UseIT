@@ -5,7 +5,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { supabase } from '../services/supabase';
+import { useAdminList } from '../hooks/useAdminList';
 import { signedUrlFor, VERIFICATION_PHOTOS_BUCKET } from '../services/storage';
+import { formatPrice } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
@@ -34,28 +36,20 @@ const REJECT_REASON_MIN = 5;
 export default function AdminItemsScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const [items, setItems] = useState<PendingItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [reasons, setReasons] = useState<Record<string, string>>({});
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const { data, error } = await supabase.rpc('admin_list_pending_items');
-    if (error) { Alert.alert('Error', error.message); setLoading(false); return; }
-    const rows = (data as PendingItem[]) ?? [];
-    // verification-photos is a private bucket (backlog AB) — the stored value
-    // is a path, not a displayable URL; mint a short-lived signed one here.
-    const withUrls = await Promise.all(rows.map(async (r) => ({
+  // verification-photos is a private bucket (backlog AB) — the stored value
+  // is a path, not a displayable URL; mint a short-lived signed one here.
+  const { data: items, setData: setItems, loading, load } = useAdminList<PendingItem>('admin_list_pending_items', {
+    transform: rows => Promise.all(rows.map(async r => ({
       ...r,
       signedVerificationUrl: r.verification_image_url
         ? await signedUrlFor(VERIFICATION_PHOTOS_BUCKET, r.verification_image_url)
         : null,
-    })));
-    setItems(withUrls);
-    setLoading(false);
-  }, []);
+    }))),
+  });
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -102,7 +96,7 @@ export default function AdminItemsScreen({ navigation }: Props) {
             : <View style={styles.itemThumbFallback}><CategoryIcon category={item.category} size={20} color={colors.textMuted} /></View>}
           <View style={{ flex: 1 }}>
             <Text style={styles.itemTitle}>{item.title}</Text>
-            <Text style={styles.itemMeta}>₪{item.daily_price}/day{item.sale_price ? ` · Buy ₪${item.sale_price}` : ''}</Text>
+            <Text style={styles.itemMeta}>{formatPrice(item.daily_price)}/day{item.sale_price ? ` · Buy ${formatPrice(item.sale_price)}` : ''}</Text>
             <Text style={styles.itemMeta}>{item.city ?? 'No city set'} · by {item.owner_name}</Text>
           </View>
         </View>

@@ -5,7 +5,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { supabase } from '../services/supabase';
+import { useAdminList } from '../hooks/useAdminList';
 import { signedUrlFor, HANDOFF_EVIDENCE_BUCKET } from '../services/storage';
+import { formatDateRange, formatPrice } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { ChevronLeft, Scale, Package, ShieldCheck } from 'lucide-react-native';
@@ -34,8 +36,6 @@ type DisputeRow = {
 export default function AdminDisputesScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const [disputes, setDisputes] = useState<DisputeRow[]>([]);
-  const [loading, setLoading] = useState(true);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [damageAmounts, setDamageAmounts] = useState<Record<string, string>>({});
@@ -50,28 +50,16 @@ export default function AdminDisputesScreen({ navigation }: Props) {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   useEffect(() => { supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id ?? null)); }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const { data, error } = await supabase.rpc('admin_list_disputes');
-    if (error) { Alert.alert('Error', error.message); setLoading(false); return; }
-
-    const rows = (data as DisputeRow[]) ?? [];
-    // handoff-evidence is a private bucket — mint a short-lived signed URL per
-    // photo rather than storing/displaying a raw path.
-    const withUrls = await Promise.all(rows.map(async (r) => ({
+  // handoff-evidence is a private bucket — mint a short-lived signed URL per
+  // photo rather than storing/displaying a raw path.
+  const { data: disputes, setData: setDisputes, loading, load } = useAdminList<DisputeRow>('admin_list_disputes', {
+    transform: rows => Promise.all(rows.map(async r => ({
       ...r,
       signedPhotoUrl: r.photo_url ? await signedUrlFor(HANDOFF_EVIDENCE_BUCKET, r.photo_url) : null,
-    })));
-    setDisputes(withUrls);
-    setLoading(false);
-  }, []);
+    }))),
+  });
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
-
-  function formatDateRange(start: string, end: string): string {
-    const fmt = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-    return `${fmt(start)} → ${fmt(end)}`;
-  }
 
   // Called only from "Publish Ruling" — the admin has already picked a side
   // and reviewed the fields, so this is the actual send, not a second
@@ -93,7 +81,7 @@ export default function AdminDisputesScreen({ navigation }: Props) {
     const { error } = await supabase.rpc('admin_resolve_dispute', {
       p_transaction_id: transactionId,
       p_favor: favor,
-      p_note: notes[transactionId]?.trim() || null,
+      p_note: notes[transactionId]?.trim() || undefined,
     });
     if (error) {
       Alert.alert('Error', error.message ?? 'Could not resolve the dispute.');
@@ -163,7 +151,7 @@ export default function AdminDisputesScreen({ navigation }: Props) {
               : <View style={styles.itemThumbFallback}><Package size={18} color={colors.textMuted} /></View>}
             <View>
               <Text style={styles.itemTitle}>{d.item_title}</Text>
-              <Text style={styles.dateRange}>{formatDateRange(d.start_date, d.end_date)} · ₪{d.total_price}</Text>
+              <Text style={styles.dateRange}>{formatDateRange(d.start_date, d.end_date)} · {formatPrice(d.total_price)}</Text>
             </View>
           </View>
         </View>

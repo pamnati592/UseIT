@@ -54,7 +54,7 @@ export default function AdminHomeScreen({ navigation }: Props) {
       icon: ShieldCheck,
       label: 'Support Inbox',
       count: supportUnreadCount,
-      sub: 'Every "Contact UseIT" conversation, platform-wide',
+      sub: 'Every "Message UseIT" conversation, platform-wide',
     },
     {
       key: 'AdminDisputes' as const,

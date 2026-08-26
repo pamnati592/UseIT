@@ -1,10 +1,10 @@
 import { useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
-import { supabase } from '../services/supabase';
+import { useAdminList } from '../hooks/useAdminList';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { ChevronLeft, ShieldCheck, Package, Key } from 'lucide-react-native';
@@ -35,17 +35,8 @@ type RoleTab = 'renter' | 'lender';
 export default function AdminSupportInboxScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const [threads, setThreads] = useState<ThreadRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: threads, loading, load } = useAdminList<ThreadRow>('admin_list_support_threads');
   const [roleTab, setRoleTab] = useState<RoleTab>('renter');
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    const { data, error } = await supabase.rpc('admin_list_support_threads');
-    if (error) { Alert.alert('Error', error.message); setLoading(false); return; }
-    setThreads((data as ThreadRow[]) ?? []);
-    setLoading(false);
-  }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 

@@ -7,6 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../services/supabase';
+import type { Database } from '../types/database';
 import CityPicker, { type CityValue } from '../components/CityPicker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
@@ -143,7 +144,7 @@ export default function EditItemScreen({ navigation, route }: Props) {
       // Only overwrite city + location when the user actively picks a new one.
       // Editing just the description from a different physical place must not
       // silently change the item's stored location.
-      const updatePayload: Record<string, unknown> = {
+      const updatePayload: Database['public']['Tables']['items']['Update'] = {
         title: title.trim(),
         category,
         description: description.trim(),

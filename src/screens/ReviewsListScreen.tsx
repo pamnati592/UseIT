@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, Star, MessageSquareText, Package } from 'lucide-react-native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { ParamListBase } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
@@ -15,7 +17,7 @@ const STAR_COLOR = '#f59e0b';
 // toward the lender score/reviews and vice versa). Reachable from both
 // HomeStack (ItemDetail) and ProfileStack (PublicProfile/own Profile).
 type Props = {
-  navigation: any;
+  navigation: NativeStackNavigationProp<ParamListBase>;
   route: {
     params:
       | { mode: 'item'; itemId: string; itemTitle: string }

@@ -5,6 +5,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { supabase } from '../services/supabase';
+import { useAdminList } from '../hooks/useAdminList';
+import { formatShortDate, formatPrice } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { ChevronLeft, Clock, Package, ShieldCheck } from 'lucide-react-native';
@@ -37,18 +39,9 @@ const CLIFF_DAYS = 14;
 export default function AdminOverdueScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const [rows, setRows] = useState<OverdueRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: rows, loading, load } = useAdminList<OverdueRow>('admin_list_overdue_rentals');
   const [charging, setCharging] = useState<string | null>(null);
   const [fineAmounts, setFineAmounts] = useState<Record<string, string>>({});
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    const { data, error } = await supabase.rpc('admin_list_overdue_rentals');
-    if (error) { Alert.alert('Error', error.message); setLoading(false); return; }
-    setRows((data as OverdueRow[]) ?? []);
-    setLoading(false);
-  }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -65,20 +58,18 @@ export default function AdminOverdueScreen({ navigation }: Props) {
     }
   }
 
-  function formatDate(iso: string): string {
-    return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-  }
+  const formatDate = formatShortDate;
 
   async function chargeCliffFine(row: OverdueRow) {
     const raw = fineAmounts[row.transaction_id]?.trim();
     const amount = Number(raw);
     if (!raw || !Number.isFinite(amount) || amount <= 0) {
-      Alert.alert('Enter an amount', 'Set the fine amount before charging — this is not calculated automatically.');
+      Alert.alert('Enter an amount', 'Set the penalty amount before charging — this is not calculated automatically.');
       return;
     }
     Alert.alert(
       'Charge overdue penalty?',
-      `₪${amount} will be charged to ${row.renter_name}'s saved card for keeping "${row.item_title}" ${row.late_days} days past due. This cannot be undone.`,
+      `${formatPrice(amount)} will be charged to ${row.renter_name}'s saved card for keeping "${row.item_title}" ${row.late_days} days past due. This cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -135,7 +126,7 @@ export default function AdminOverdueScreen({ navigation }: Props) {
         </View>
 
         <Text style={styles.accrued}>
-          Accrued daily late fee so far: <Text style={styles.accruedAmount}>₪{row.accrued_fee}</Text>
+          Accrued daily late fee so far: <Text style={styles.accruedAmount}>{formatPrice(row.accrued_fee)}</Text>
           <Text style={styles.accruedNote}> (charged automatically once returned)</Text>
         </Text>
 
@@ -163,7 +154,7 @@ export default function AdminOverdueScreen({ navigation }: Props) {
             <View style={styles.cliffRow}>
               <TextInput
                 style={[styles.fineInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.bg }]}
-                placeholder="Fine amount (₪)"
+                placeholder="Penalty amount (₪)"
                 placeholderTextColor={colors.textMuted}
                 keyboardType="numeric"
                 value={fineAmounts[row.transaction_id] ?? ''}

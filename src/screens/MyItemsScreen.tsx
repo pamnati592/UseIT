@@ -11,6 +11,7 @@ import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { ChevronLeft, Package, Calendar, Pencil, Eye, EyeOff } from 'lucide-react-native';
+import { formatPrice } from '../utils/format';
 
 type Booking = {
   id: string;
@@ -45,10 +46,6 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 type Props = NativeStackScreenProps<ProfileStackParamList, 'MyItems'>;
-
-function fmt(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-}
 
 export default function MyItemsScreen({ navigation }: Props) {
   const { colors } = useTheme();
@@ -88,7 +85,7 @@ export default function MyItemsScreen({ navigation }: Props) {
     if (!itemsRes.data) { setLoading(false); return; }
 
     const txByItem: Record<string, Booking[]> = {};
-    (txRes.data ?? []).forEach((tx: any) => {
+    (txRes.data ?? []).forEach(tx => {
       if (!txByItem[tx.item_id]) txByItem[tx.item_id] = [];
       txByItem[tx.item_id].push({
         id: tx.id,
@@ -100,10 +97,10 @@ export default function MyItemsScreen({ navigation }: Props) {
       });
     });
 
-    const soldItemIds = new Set((soldRes.data ?? []).map((p: any) => p.item_id));
+    const soldItemIds = new Set((soldRes.data ?? []).map(p => p.item_id));
 
     setItems(
-      (itemsRes.data as any[]).map(item => ({
+      itemsRes.data.map(item => ({
         ...item,
         description: item.description ?? null,
         sale_price: item.sale_price ?? null,
@@ -172,7 +169,7 @@ export default function MyItemsScreen({ navigation }: Props) {
                   </View>
                   <View style={styles.cardMeta}>
                     <Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text>
-                    <Text style={styles.itemPrice}>₪{item.daily_price}/day</Text>
+                    <Text style={styles.itemPrice}>{formatPrice(item.daily_price)}/day</Text>
                   </View>
                   <Text style={styles.cardChevron}>›</Text>
                 </TouchableOpacity>

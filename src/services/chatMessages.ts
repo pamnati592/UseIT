@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { chatBus } from './chatBus';
+import type { Database } from '../types/database';
 
 /**
  * Posts a status-change system message and marks it read for whoever
@@ -21,11 +22,12 @@ export async function insertSystemMessage(params: {
   const now = new Date().toISOString();
   const readField = isLender ? 'lender_last_read_at' : 'renter_last_read_at';
 
-  await supabase.from('conversations').update({
+  const update: Pick<Database['public']['Tables']['conversations']['Update'], 'last_message' | 'last_message_at' | 'renter_last_read_at' | 'lender_last_read_at'> = {
     last_message: preview ?? content,
     last_message_at: now,
     [readField]: now,
-  }).eq('id', conversationId);
+  };
+  await supabase.from('conversations').update(update).eq('id', conversationId);
 
   await supabase.from('messages').insert({
     conversation_id: conversationId,
