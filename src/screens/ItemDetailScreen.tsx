@@ -456,7 +456,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
               <View style={styles.pickupRow}>
                 <MapPin size={15} color={colors.textSecondary} strokeWidth={2} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.pickupLabel}>Pickup location</Text>
+                  <Text style={styles.pickupLabel}>Meeting point</Text>
                   <Text style={styles.pickupText}>{pickupLocation}</Text>
                 </View>
               </View>

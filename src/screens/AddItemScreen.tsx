@@ -267,7 +267,7 @@ export default function AddItemScreen() {
           <Text style={styles.label}>City *</Text>
           <CityPicker value={cityValue} onChange={setCityValue} placeholder="Choose city" />
 
-          <Text style={styles.label}>Pickup location (optional)</Text>
+          <Text style={styles.label}>Meeting point (optional)</Text>
           <TextInput
             style={styles.input}
             placeholder="e.g. Dizengoff Square, near the fountain"

@@ -262,7 +262,7 @@ export default function EditItemScreen({ navigation, route }: Props) {
             placeholder="Choose city"
           />
 
-          <Text style={styles.label}>Pickup location (optional)</Text>
+          <Text style={styles.label}>Meeting point (optional)</Text>
           <TextInput
             style={styles.input}
             placeholder="e.g. Dizengoff Square, near the fountain"

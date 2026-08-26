@@ -59,7 +59,7 @@ export default function MeetingPointScreen({ navigation, route }: Props) {
           <View style={styles.emptyCard}>
             <MapPin size={28} color={colors.textFaint} strokeWidth={1.5} />
             <Text style={styles.emptyText}>
-              The lender hasn&apos;t set a pickup location for this item.
+              The lender hasn&apos;t set a meeting point for this item.
             </Text>
           </View>
         )}
