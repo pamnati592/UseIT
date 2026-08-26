@@ -14,7 +14,7 @@ import { CategoryIcon } from '../components/CategoryIcon';
 import { ChevronLeft, ChevronRight, MapPin, Check, X, TriangleAlert, Flag } from 'lucide-react-native';
 import { formatPrice } from '../utils/format';
 
-const REPORT_REASONS = ['Harassment', 'Scam or fraud', 'Inappropriate content', 'Item not as described', 'Other'];
+const REPORT_REASONS = ['Harassment', 'Scam or fraud', 'Inappropriate content', 'Misleading listings', 'Other'];
 
 type Props = NativeStackScreenProps<HomeStackParamList, 'PublicProfile'>;
 

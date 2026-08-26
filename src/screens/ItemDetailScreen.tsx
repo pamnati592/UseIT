@@ -531,7 +531,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
               >
                 <Heart size={18} color={wishlisted ? colors.danger : colors.text} fill={wishlisted ? colors.danger : 'transparent'} />
                 <Text style={styles.actionBtnTextSecondary}>
-                  {wishlisted ? 'Saved' : 'Wishlist'}
+                  {wishlisted ? 'Wishlisted' : 'Wishlist'}
                 </Text>
               </TouchableOpacity>
 

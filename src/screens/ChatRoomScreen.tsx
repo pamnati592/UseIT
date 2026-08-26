@@ -1482,7 +1482,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                   ) : (
                     <>
                       <Scale size={16} color={colors.white} />
-                      <Text style={[styles.modalPrimaryBtnText, { color: colors.white }]}>Submit Dispute</Text>
+                      <Text style={[styles.modalPrimaryBtnText, { color: colors.white }]}>Submit Report</Text>
                     </>
                   )}
                 </TouchableOpacity>

@@ -181,7 +181,7 @@ export default function MyItemsScreen({ navigation }: Props) {
                 )}
                 {item.verification_status === 'draft' && item.rejection_reason && (
                   <View style={[styles.statusBanner, styles.statusBannerRejected]}>
-                    <Text style={styles.statusBannerRejectedText}>❌ Rejected: {item.rejection_reason}</Text>
+                    <Text style={styles.statusBannerRejectedText}>❌ Declined: {item.rejection_reason}</Text>
                   </View>
                 )}
 

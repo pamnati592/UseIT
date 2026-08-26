@@ -301,7 +301,7 @@ export default function QRScanScreen({ navigation, route }: Props) {
                   })}
                 >
                   <TriangleAlert size={15} color={colors.danger} />
-                  <Text style={styles.reportDamageText}>Report Damage Instead</Text>
+                  <Text style={styles.reportDamageText}>Report a Problem</Text>
                 </TouchableOpacity>
               ) : (
                 /* Pickup needs the opposite of a dispute: the renter simply doesn't take

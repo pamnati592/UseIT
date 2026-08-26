@@ -124,7 +124,7 @@ export default function AdminItemsScreen({ navigation }: Props) {
           <>
             <TextInput
               style={[styles.reasonInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.bg }]}
-              placeholder="Why is this being rejected? (shown to the seller)"
+              placeholder="Why is this being declined? (shown to the seller)"
               placeholderTextColor={colors.textMuted}
               value={reasons[item.item_id] ?? ''}
               onChangeText={(t) => setReasons(prev => ({ ...prev, [item.item_id]: t }))}
@@ -133,7 +133,7 @@ export default function AdminItemsScreen({ navigation }: Props) {
             />
             <View style={styles.actionsRow}>
               <TouchableOpacity style={[styles.actionBtn, styles.rejectBtn, busy && styles.btnDisabled]} onPress={() => reject(item.item_id)} disabled={busy}>
-                {busy ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.actionBtnText}>Confirm Reject</Text>}
+                {busy ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.actionBtnText}>Confirm Decline</Text>}
               </TouchableOpacity>
               <TouchableOpacity style={styles.cancelBtn} onPress={() => setRejectingId(null)} disabled={busy}>
                 <Text style={styles.cancelBtnText}>Cancel</Text>
@@ -146,7 +146,7 @@ export default function AdminItemsScreen({ navigation }: Props) {
               {busy ? <ActivityIndicator color="#fff" size="small" /> : <><Check size={15} color="#fff" /><Text style={styles.actionBtnText}>Approve</Text></>}
             </TouchableOpacity>
             <TouchableOpacity style={[styles.actionBtn, styles.rejectBtn, busy && styles.btnDisabled]} onPress={() => setRejectingId(item.item_id)} disabled={busy}>
-              <X size={15} color="#fff" /><Text style={styles.actionBtnText}>Reject</Text>
+              <X size={15} color="#fff" /><Text style={styles.actionBtnText}>Decline</Text>
             </TouchableOpacity>
           </View>
         )}

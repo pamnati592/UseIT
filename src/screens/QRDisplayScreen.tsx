@@ -269,7 +269,7 @@ export default function QRDisplayScreen({ navigation, route }: Props) {
         {step !== 'done' && (
           <TouchableOpacity style={styles.reportBtn} onPress={reportIssue}>
             <TriangleAlert size={16} color={colors.danger} />
-            <Text style={styles.reportText}>Report an issue</Text>
+            <Text style={styles.reportText}>Report a Problem</Text>
           </TouchableOpacity>
         )}
       </ScrollView>

@@ -104,7 +104,7 @@ export default function WishlistScreen() {
             <View style={styles.empty}>
               <Heart size={48} color={colors.textFaint} strokeWidth={1.5} />
               <Text style={styles.emptyText}>Your wishlist is empty</Text>
-              <Text style={styles.emptySub}>Save items by tapping the heart on any listing</Text>
+              <Text style={styles.emptySub}>Add items to your wishlist by tapping the heart on any listing</Text>
             </View>
           )
           : (
