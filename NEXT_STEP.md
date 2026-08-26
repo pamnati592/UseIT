@@ -1,9 +1,13 @@
 # Next Suggested Step — For Nati 👋
 
-## Where things stand (2026-08-24 end of session)
-Huge session — docs cleanup, admin architecture rebuilt a second time (and simplified), Stripe Connect payouts confirmed working with a **real payment**, and the entire remaining pre-launch backlog swept in one pass (account deletion, GDPR export, block/report, private verification photos, biometric gate, login lockout, Sign in with Apple scaffolding, a real Impact Score, a new Clothing category). 23 commits, all pushed.
+## Where things stand (2026-08-26 end of session)
+Another huge session, all pushed to `main` (which — heads up — is now `github.com/pamnati592/UseIT`, not `SwipeAndRent`): Demo Day + code review prep planned and largely executed (Supabase generated types, `any` cleanup 55→41, cross-screen duplication extracted into `src/utils/format.ts`/`src/hooks/useAdminList.ts`, `ChatRoomScreen.tsx` cut from 1913→1567 lines, a real SAS bug fixed and verified end-to-end), a demo account created, the Google Maps key fixed, database test-profanity cleaned up, and a full rename from SwipeAndRent to **UseIT** — including the risky part (bundle identifier, scheme, slug) once Ori explicitly signed off on it. See the "🔍 Code review prep" and the two rebrand sections below for the full detail — this paragraph is just the index.
 
-**Next suggested step:** test the stuff that still has no device confirmation — the Reports queue end-to-end (report a user → admin dismisses/manages), account deletion (careful, it's real — use a throwaway test account), and GDPR export's Share sheet. See "Testing owed" below for the full list.
+**Next suggested step, in order:**
+1. **Native rebuild on both devices** — the bundle identifier changed (`com.swipeandrentapp` → `com.useitapp`), so both the iPhone and Galaxy currently have an orphaned old app installed, not an upgradable one. See the rebrand section below for exact steps (uninstall-then-reinstall on Android; fresh provisioning-trust on iOS).
+2. **Quick on-device eyeball of the last terminology batch** — not verified live this session since the Galaxy disconnected mid-batch. Three easy spots: Item Detail's wishlist heart (should say "Wishlisted" once tapped), the Get Help → "Report a Problem" flow, Admin Items' "Decline" button.
+3. **Check Supabase Dashboard → Authentication → URL Configuration** for a `swipeandrent://` entry in the redirect-URL allowlist (used by Google sign-in) — add a `useit://` counterpart if one exists. Not checked this session, no MCP tool exposed it for a direct read.
+4. Everything from the 2026-08-24 session that was still pending: the Reports queue end-to-end, account deletion (careful, it's real), GDPR export's Share sheet — see "Testing owed" below for the full list, still accurate.
 
 ## ✅ NEW (2026-08-26) — DB profanity cleanup + full SwipeAndRent → UseIT rebrand
 
@@ -139,7 +143,12 @@ A professional review of this codebase is coming. The full plan (see `/Users/per
 - **No tests at all** — no test files, no test runner, no CI. Will very likely be the first thing reviewers flag. Not fixed — a handful of tests around `src/services/*`, the Impact Score calc, or refund tiering would at least show intent.
 - **41 occurrences of `catch (e: any)`** — deliberately deferred (see the "explicitly out of scope" note in the original plan): cosmetic only, ~20-file diff surface, no functional upside since nothing downstream depends on the caught value's type. If ever done: one `getErrorMessage(e: unknown)` helper in `src/utils/errors.ts`, applied in small verified batches, not before Demo Day.
 - **Prettier still not set up** — lower priority than lint (already done), no formatting-drift symptom yet.
-- **4 terminology items intentionally left as product decisions, not engineering ones** (raised, not silently picked): the dispute flow's remaining button-label variance ("Report an issue"/"Report Damage Instead"/"Report a Problem"/"Submit Dispute" all lead to the same modal); "item not as described" resolving to 3 different backend outcomes depending on which screen; "Declined" (transactions) vs "Rejected" (listings) — may be a meaningful distinction, not an accident; "Wishlist" (noun) vs "Save"/"Saved" (verb) — plausibly fine UX already.
+- ✅ **The 4 terminology items — resolved (2026-08-26).** Ori confirmed all 4 should be unified; done and pushed:
+  1. Dispute-flow entry points ("Report an issue," "Report Damage Instead," already "Report a Problem") all now say **"Report a Problem"**; the final submit button renamed "Submit Dispute" → **"Submit Report"** to match.
+  2. "Item not as described" was reused for two unrelated things (reporting a user vs. declining a rental at pickup) — this one's the reverse pattern, so it was fixed by *differentiating* instead of unifying: the user-report reason is now **"Misleading listings"**, the pickup-decline button's wording left alone since its own screen context already makes it clear.
+  3. Listing moderation's "Reject"/"Rejected" unified to **"Decline"/"Declined"**, matching the term already dominant for rental-request moderation everywhere else. Identifiers (`rejectingId`, `admin_reject_item`, `rejection_reason` column) deliberately left alone — copy-only.
+  4. Wishlist toggle's "Saved" → **"Wishlisted"**, matching the noun used everywhere else in the feature.
+  - `tsc`/lint clean throughout. **Not yet verified on-device** — the Galaxy disconnected mid-session for this last batch; worth a quick visual check next session (Item Detail's wishlist heart, the Get Help → Report a Problem flow, and Admin Items' Decline button are the 3 easiest spots to eyeball).
 - **Duplicate `messageParty` in `AdminOverdueScreen`/`AdminDisputesScreen`** — still open, tracked in the Backlog section below, small and easy to knock out if there's time.
 
 ---
