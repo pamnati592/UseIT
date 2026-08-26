@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "SwipeAndRent",
+    "name": "UseIT",
     "slug": "swipeandrent",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -34,15 +34,15 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "SwipeAndRent needs camera access to take photos of your items.",
+          "cameraPermission": "UseIT needs camera access to take photos of your items.",
           "microphonePermission": false,
-          "photosPermission": "SwipeAndRent needs photo library access to select item photos."
+          "photosPermission": "UseIT needs photo library access to select item photos."
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "SwipeAndRent needs camera access to scan the rental QR code during item pickup and return."
+          "cameraPermission": "UseIT needs camera access to scan the rental QR code during item pickup and return."
         }
       ],
       [
@@ -54,8 +54,8 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "SwipeAndRent uses your location to rank items by distance so you see what's near you first.",
-          "locationWhenInUsePermission": "SwipeAndRent uses your location to rank items by distance so you see what's near you first.",
+          "locationAlwaysAndWhenInUsePermission": "UseIT uses your location to rank items by distance so you see what's near you first.",
+          "locationWhenInUsePermission": "UseIT uses your location to rank items by distance so you see what's near you first.",
           "isAndroidBackgroundLocationEnabled": false,
           "isIosBackgroundLocationEnabled": false
         }
@@ -64,7 +64,7 @@
       [
         "expo-local-authentication",
         {
-          "faceIDPermission": "SwipeAndRent uses Face ID to verify it's really you before granting full access."
+          "faceIDPermission": "UseIT uses Face ID to verify it's really you before granting full access."
         }
       ]
     ]

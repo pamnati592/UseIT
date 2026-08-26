@@ -19,7 +19,7 @@ serve((req) => {
   <script>window.location.replace(${JSON.stringify(deepLink)});</script>
 </head>
 <body>
-  <p>Returning to SwipeAndRent… if nothing happens, <a href="${deepLink}">tap here</a>.</p>
+  <p>Returning to UseIT… if nothing happens, <a href="${deepLink}">tap here</a>.</p>
 </body>
 </html>`;
 

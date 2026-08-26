@@ -847,7 +847,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       // ephemeral key lets the sheet offer "save this card" and show it saved on
       // future payments instead of retyping card number/expiry/CVC every time.
       const { error: initError } = await initPaymentSheet({
-        merchantDisplayName: 'SwipeAndRent',
+        merchantDisplayName: 'UseIT',
         paymentIntentClientSecret: client_secret,
         customerId: customer_id,
         customerEphemeralKeySecret: ephemeral_key,
@@ -907,7 +907,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       if (fnError) throw new Error(fnError);
 
       const { error: initError } = await initPaymentSheet({
-        merchantDisplayName: 'SwipeAndRent',
+        merchantDisplayName: 'UseIT',
         paymentIntentClientSecret: client_secret,
         customerId: customer_id,
         customerEphemeralKeySecret: ephemeral_key,

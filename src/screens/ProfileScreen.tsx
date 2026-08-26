@@ -147,7 +147,7 @@ export default function ProfileScreen() {
         support_threads: supportThreads.data ?? [],
       };
 
-      await Share.share({ message: JSON.stringify(payload, null, 2), title: 'SwipeAndRent data export' });
+      await Share.share({ message: JSON.stringify(payload, null, 2), title: 'UseIT data export' });
     } catch (e: any) {
       Alert.alert('Error', e.message ?? 'Could not export your data.');
     } finally {
