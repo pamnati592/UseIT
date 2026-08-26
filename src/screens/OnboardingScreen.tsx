@@ -139,7 +139,7 @@ export default function OnboardingScreen({ onFinished }: { onFinished: () => voi
         {step === 2 && (
           <>
             <Text style={styles.title}>Tell us about yourself</Text>
-            <Text style={styles.subtitle}>This helps others know who they're renting to</Text>
+            <Text style={styles.subtitle}>This helps others know who they&apos;re renting to</Text>
 
             <Text style={styles.label}>Full name</Text>
             <TextInput
@@ -178,7 +178,7 @@ export default function OnboardingScreen({ onFinished }: { onFinished: () => voi
           <>
             <Text style={styles.title}>What are you into?</Text>
             <Text style={styles.subtitle}>
-              Select at least 3 — we'll use these to show you relevant items
+              Select at least 3 — we&apos;ll use these to show you relevant items
             </Text>
 
             <View style={styles.interestsGrid}>
@@ -211,7 +211,7 @@ export default function OnboardingScreen({ onFinished }: { onFinished: () => voi
             >
               {loading
                 ? <ActivityIndicator color={colors.btnText} />
-                : <Text style={styles.nextButtonText}>Let's go!</Text>
+                : <Text style={styles.nextButtonText}>Let&apos;s go!</Text>
               }
             </TouchableOpacity>
 

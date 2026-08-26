@@ -525,7 +525,7 @@ export default function ProfileScreen() {
           <View style={styles.sheet}>
             <View style={styles.sheetHandle} />
             <Text style={styles.switchTitle}>Switch User</Text>
-            <Text style={styles.switchSubtitle}>First switch signs in once — after that it's instant</Text>
+            <Text style={styles.switchSubtitle}>First switch signs in once — after that it&apos;s instant</Text>
 
             {TEST_ACCOUNTS.map(account => {
               const isActive = account.label === activeLabel;

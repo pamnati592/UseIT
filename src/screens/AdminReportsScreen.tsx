@@ -71,7 +71,7 @@ export default function AdminReportsScreen({ navigation }: Props) {
         </View>
 
         {r.description ? (
-          <Text style={styles.description}>"{r.description}"</Text>
+          <Text style={styles.description}>&quot;{r.description}&quot;</Text>
         ) : null}
 
         <View style={styles.actionsRow}>

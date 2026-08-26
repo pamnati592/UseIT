@@ -318,7 +318,7 @@ export default function QRScanScreen({ navigation, route }: Props) {
                   })}
                 >
                   <TriangleAlert size={15} color={colors.danger} />
-                  <Text style={styles.reportDamageText}>Item isn't as described — don't take it</Text>
+                  <Text style={styles.reportDamageText}>Item isn&apos;t as described — don&apos;t take it</Text>
                 </TouchableOpacity>
               )}
             </>
@@ -329,7 +329,7 @@ export default function QRScanScreen({ navigation, route }: Props) {
             <>
               <Text style={styles.sectionLabel}>Document Item Condition</Text>
               <Text style={styles.photoHint}>
-                Take a photo to verify the item's condition before {phase === 'pickup' ? 'handing it over' : 'accepting the return'}.
+                Take a photo to verify the item&apos;s condition before {phase === 'pickup' ? 'handing it over' : 'accepting the return'}.
               </Text>
 
               {photoUri ? (

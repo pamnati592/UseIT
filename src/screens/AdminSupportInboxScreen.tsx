@@ -136,7 +136,7 @@ export default function AdminSupportInboxScreen({ navigation }: Props) {
         <View style={styles.empty}>
           <ShieldCheck size={48} color={colors.textFaint} strokeWidth={1.5} />
           <Text style={styles.emptyText}>No support threads</Text>
-          <Text style={styles.emptySub}>Every "Message UseIT" conversation shows up here, from any rental</Text>
+          <Text style={styles.emptySub}>Every &quot;Message UseIT&quot; conversation shows up here, from any rental</Text>
         </View>
       ) : (
         <FlatList

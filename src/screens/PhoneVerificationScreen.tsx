@@ -81,7 +81,7 @@ export default function PhoneVerificationScreen({ onVerified }: { onVerified: ()
         {step === 'phone' ? (
           <>
             <Text style={styles.title}>Verify your phone</Text>
-            <Text style={styles.subtitle}>We'll send you a verification code via SMS</Text>
+            <Text style={styles.subtitle}>We&apos;ll send you a verification code via SMS</Text>
 
             <View style={styles.field}>
               <Text style={styles.label}>Phone number</Text>

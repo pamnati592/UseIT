@@ -251,7 +251,7 @@ export default function ChatsScreen({ navigation }: Props) {
             <ShieldCheck size={48} color={colors.textFaint} strokeWidth={1.5} />
             <Text style={styles.emptyTitle}>No UseIT conversations</Text>
             <Text style={styles.emptySubtext}>
-              Tap "Contact UseIT" from a rental to start one
+              Tap &quot;Contact UseIT&quot; from a rental to start one
             </Text>
           </View>
         ) : (

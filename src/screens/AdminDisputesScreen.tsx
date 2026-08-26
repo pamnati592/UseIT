@@ -174,7 +174,7 @@ export default function AdminDisputesScreen({ navigation }: Props) {
         </View>
 
         {d.description ? (
-          <Text style={styles.description}>"{d.description}"</Text>
+          <Text style={styles.description}>&quot;{d.description}&quot;</Text>
         ) : (
           <Text style={styles.noEvidence}>No description was provided.</Text>
         )}
