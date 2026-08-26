@@ -101,8 +101,8 @@ Turning it into an operating business is a separate step from the software, and 
 **Expo Go won't run this app** — `@stripe/stripe-react-native` needs native code that only ships in a custom dev client, so payments (and anything that touches them) fail under Expo Go. Build a dev client instead:
 
 ```bash
-git clone https://github.com/pamnati592/SwipeAndRent.git
-cd SwipeAndRent
+git clone https://github.com/pamnati592/UseIT.git
+cd UseIT
 npm install
 npx expo run:ios      # or: npx expo run:android
 ```

@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "UseIT",
-    "slug": "swipeandrent",
+    "slug": "useit",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -14,11 +14,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.swipeandrentapp",
+      "bundleIdentifier": "com.useitapp",
       "usesAppleSignIn": true
     },
     "android": {
-      "package": "com.swipeandrentapp",
+      "package": "com.useitapp",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -29,7 +29,7 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "scheme": "swipeandrent",
+    "scheme": "useit",
     "plugins": [
       [
         "expo-image-picker",

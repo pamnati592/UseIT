@@ -8,7 +8,7 @@ import type { Session } from '@supabase/supabase-js';
 WebBrowser.maybeCompleteAuthSession();
 
 export async function signInWithGoogle() {
-  const redirectUrl = AuthSession.makeRedirectUri({ scheme: 'swipeandrent' });
+  const redirectUrl = AuthSession.makeRedirectUri({ scheme: 'useit' });
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',

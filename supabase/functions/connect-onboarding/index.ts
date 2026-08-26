@@ -64,7 +64,7 @@ serve(async (req) => {
 
     // Stripe rejects custom app schemes here outright ("Not a valid URL") —
     // only http(s) is accepted. connect-return is a tiny hosted page that
-    // immediately redirects into the real swipeandrent:// deep link.
+    // immediately redirects into the real useit:// deep link.
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const accountLink = await stripe.accountLinks.create({
       account: accountId,

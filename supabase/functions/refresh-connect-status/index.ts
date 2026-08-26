@@ -12,7 +12,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Called when the app's deep link (swipeandrent://connect-return) fires
+// Called when the app's deep link (useit://connect-return) fires
 // after the user finishes (or abandons) the Stripe-hosted onboarding flow.
 // Re-fetches the real status from Stripe rather than trusting the redirect
 // happened — the user can background the app mid-flow and come back later,

@@ -301,7 +301,7 @@ export default function ProfileScreen() {
       }
       if (data?.error) throw new Error(data.error);
 
-      await WebBrowser.openAuthSessionAsync(data.url, 'swipeandrent://connect-return');
+      await WebBrowser.openAuthSessionAsync(data.url, 'useit://connect-return');
 
       const { data: status, error: statusError } = await supabase.functions.invoke('refresh-connect-status');
       if (!statusError && status) {

@@ -1,7 +1,7 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 
 // Stripe's Account Link refresh_url/return_url only accept http(s) URLs —
-// a custom app scheme like swipeandrent:// is rejected outright with "Not
+// a custom app scheme like useit:// is rejected outright with "Not
 // a valid URL" (confirmed against stripe-react-native#1188). This is the
 // standard workaround: a real HTTPS page Stripe is happy to redirect to,
 // which immediately bounces into the app's actual deep link. No auth
@@ -9,7 +9,7 @@ import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 serve((req) => {
   const url = new URL(req.url);
   const refresh = url.searchParams.get('refresh') === 'true';
-  const deepLink = `swipeandrent://connect-return${refresh ? '?refresh=true' : ''}`;
+  const deepLink = `useit://connect-return${refresh ? '?refresh=true' : ''}`;
 
   const html = `<!DOCTYPE html>
 <html>
