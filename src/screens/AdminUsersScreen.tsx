@@ -5,6 +5,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { supabase } from '../services/supabase';
+import { useAdminList } from '../hooks/useAdminList';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { ChevronLeft, Users, Search, ShieldAlert } from 'lucide-react-native';
@@ -28,18 +29,11 @@ type AdminUserRow = {
 export default function AdminUsersScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const [users, setUsers] = useState<AdminUserRow[]>([]);
+  const { data: users, setData: setUsers, loading, load: loadUsers } = useAdminList<AdminUserRow>('admin_list_users');
   const [search, setSearch] = useState(route.params?.initialSearch ?? '');
-  const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const load = useCallback(async (q?: string) => {
-    setLoading(true);
-    const { data, error } = await supabase.rpc('admin_list_users', { p_search: q ?? undefined });
-    if (error) { Alert.alert('Error', error.message); setLoading(false); return; }
-    setUsers((data as AdminUserRow[]) ?? []);
-    setLoading(false);
-  }, []);
+  const load = useCallback((q?: string) => loadUsers({ p_search: q ?? undefined }), [loadUsers]);
 
   // AdminReportsScreen deep-links here with the reported user's name so the
   // admin doesn't have to search manually — ban/unban stays the one

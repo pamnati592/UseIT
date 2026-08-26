@@ -5,6 +5,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { supabase } from '../services/supabase';
+import { useAdminList } from '../hooks/useAdminList';
 import { formatShortDate, formatPrice } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
@@ -38,18 +39,9 @@ const CLIFF_DAYS = 14;
 export default function AdminOverdueScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const [rows, setRows] = useState<OverdueRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: rows, loading, load } = useAdminList<OverdueRow>('admin_list_overdue_rentals');
   const [charging, setCharging] = useState<string | null>(null);
   const [fineAmounts, setFineAmounts] = useState<Record<string, string>>({});
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    const { data, error } = await supabase.rpc('admin_list_overdue_rentals');
-    if (error) { Alert.alert('Error', error.message); setLoading(false); return; }
-    setRows((data as OverdueRow[]) ?? []);
-    setLoading(false);
-  }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 

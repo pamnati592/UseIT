@@ -5,6 +5,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { supabase } from '../services/supabase';
+import { useAdminList } from '../hooks/useAdminList';
 import { signedUrlFor, HANDOFF_EVIDENCE_BUCKET } from '../services/storage';
 import { formatDateRange, formatPrice } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
@@ -35,8 +36,6 @@ type DisputeRow = {
 export default function AdminDisputesScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const [disputes, setDisputes] = useState<DisputeRow[]>([]);
-  const [loading, setLoading] = useState(true);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [damageAmounts, setDamageAmounts] = useState<Record<string, string>>({});
@@ -51,21 +50,14 @@ export default function AdminDisputesScreen({ navigation }: Props) {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   useEffect(() => { supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id ?? null)); }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const { data, error } = await supabase.rpc('admin_list_disputes');
-    if (error) { Alert.alert('Error', error.message); setLoading(false); return; }
-
-    const rows = (data as DisputeRow[]) ?? [];
-    // handoff-evidence is a private bucket — mint a short-lived signed URL per
-    // photo rather than storing/displaying a raw path.
-    const withUrls = await Promise.all(rows.map(async (r) => ({
+  // handoff-evidence is a private bucket — mint a short-lived signed URL per
+  // photo rather than storing/displaying a raw path.
+  const { data: disputes, setData: setDisputes, loading, load } = useAdminList<DisputeRow>('admin_list_disputes', {
+    transform: rows => Promise.all(rows.map(async r => ({
       ...r,
       signedPhotoUrl: r.photo_url ? await signedUrlFor(HANDOFF_EVIDENCE_BUCKET, r.photo_url) : null,
-    })));
-    setDisputes(withUrls);
-    setLoading(false);
-  }, []);
+    }))),
+  });
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 

@@ -5,6 +5,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { supabase } from '../services/supabase';
+import { useAdminList } from '../hooks/useAdminList';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { ChevronLeft, Flag, User } from 'lucide-react-native';
@@ -30,17 +31,8 @@ type ReportRow = {
 export default function AdminReportsScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const [reports, setReports] = useState<ReportRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: reports, setData: setReports, loading, load } = useAdminList<ReportRow>('admin_list_reports');
   const [busyId, setBusyId] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    const { data, error } = await supabase.rpc('admin_list_reports');
-    if (error) { Alert.alert('Error', error.message); setLoading(false); return; }
-    setReports((data as ReportRow[]) ?? []);
-    setLoading(false);
-  }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
