@@ -54,6 +54,72 @@ Everything from the 2026-08-19 gap analysis, plus R/AA/AB from the old backlog l
 
 ---
 
+## 🎪 NEW (2026-08-26): Demo Day prep
+
+### ✅ Generic demo user — created and ready
+No signup needed — anyone can log in immediately with:
+- **Email:** `demo@example.com`
+- **Password:** `1111111`
+
+Used `demo@example.com` rather than the literally-suggested `example@gmail.com` — `gmail.com` is a real, live mailbox domain, so that exact address could belong to a real person; `example.com` is the IANA-reserved documentation domain, guaranteed to have no real inbox behind it. Created via the real `supabase.auth.signup` endpoint (not a raw DB insert, so the password hash is genuine GoTrue output), user id `8dbd96a1-f444-45f5-91df-ce9a148dbc6a`. This project already has "Confirm email" **disabled**, so it was usable instantly with no manual confirmation step. Its `profiles` row was pre-filled so it skips all first-run friction and drops straight into the Home feed:
+- `phone_verified = true`, `onboarding_complete = true` (skips `PhoneVerificationScreen` and `OnboardingScreen` entirely)
+- `role = 'both'`, `city = 'Tel Aviv'`, `interests = [photography, camping, gaming, sports]` — matches where `demo_seed.sql` clusters items, and `'both'` means it can browse/rent *and* list an item (so Add Item + AI auto-fill are demoable on it too).
+- It's a normal 4th account, distinct from Ori/Nati — it can rent or buy their seeded items (GoPro, drone, guitar, surfboard, Switch, hammock, Polaroid) without owner/renter conflicts.
+
+**Caveat carried over from the codebase, not fixed by this account:** the biometric gate (`BiometricContext`) degrades to read-only if the demo visitor's *own* phone has no Face ID/fingerprint enrolled — this is a per-device check, unrelated to which account is logged in. Most personal phones have this enabled already; if a demo device doesn't, "Add Item" and "rental request / Buy" will show the read-only banner instead of failing silently.
+
+### ⚠️ CRITICAL — fix before building any distributable demo binary
+`ProfileScreen.tsx`'s **"Switch User"** feature (`src/screens/ProfileScreen.tsx:473`, modal at line 523) is **not gated behind `__DEV__`** — it always renders in the profile menu. It reads real credentials from `src/config/testAccounts.ts`, which is gitignored (never reaches GitHub) but **does exist on Ori's machine** — and Metro bundles whatever's on disk at build time regardless of git tracking. If a TestFlight/APK build is ever run from Ori's own laptop with that file present, **Ori's and Nati's real email/password pairs ship inside the app binary**, extractable by anyone who unpacks the JS bundle. Two independent fixes needed before any public build:
+1. Wrap the "Switch User" menu item and its handler in `if (__DEV__)` so it can't render in a release/preview build at all.
+2. Even so, don't build the demo binary from a checkout that has `testAccounts.ts` present — `rm`/rename it (or build from a clean clone) right before running `eas build` for anything meant to leave Ori's machine.
+
+### Demo flow (solo walkthrough, ~4–5 min)
+1. **Open on the demo account** → land straight on the Home feed (Tel Aviv-clustered seeded items, no login friction) — narrate the swipe-to-browse UX and GPS-distance ranking (`useUserLocation`).
+2. **Tap an item** → `ItemDetailScreen`: real Impact Score (per-category baseline + completed-rental history, not a placeholder), reviews, availability calendar.
+3. **AI Planner** (`AIPlannerScreen`) — ask for something like "camping this weekend," show it filtering by real availability windows.
+4. **Add Item with AI auto-fill** — take a photo of any object, show Groq vision suggesting title/category/description/price live (this is the single most "wow" moment — confirmed working end-to-end 2026-08-24).
+5. **Send a rental request** on one of Ori's/Nati's seeded items → **needs a second phone logged in as Ori or Nati, kept nearby, to approve live** inside `ChatRoomScreen` (SAS — that's the only place approval happens). Without a second device this step is narrated, not demoed live.
+6. **QR pickup/return** — if the second device approved, walk through `QRDisplayScreen`/`QRScanScreen` (proximity-checked, ~10m GPS accuracy) to show the handoff mechanic. Two physical phones required for this step.
+7. **Wishlist / Buy flow** as a quick aside — distinct from renting, buyer pays in person at pickup.
+8. Optional, judges/reviewers only (not the public flow): a 60-second detour into the Admin Console (dispute queue, Stripe Connect payout confirmed live 2026-08-24, reports queue) to show operational depth beyond the swipe UI.
+
+### Distribution: how people try it without an app store
+Two blockers rule most "obvious" options out: (a) this app is **not Expo-Go-compatible** — `expo-camera`'s custom plugin config, `@stripe/stripe-react-native`, `expo-local-authentication`, and `expo-apple-authentication` all need a real native build; (b) there is **no paid Apple Developer account** ($99/yr — same blocker already noted for Sign in with Apple), which rules out TestFlight and ad-hoc iOS distribution outright, since both require Apple's device/app signing program.
+
+| Option | iOS | Android | Verdict |
+|---|---|---|---|
+| **TestFlight** | Needs paid Apple Dev account enrolled (not done) | N/A | Best iOS UX (real install link, no cert warnings) **if** the account gets enrolled before demo day — internal testing skips App Review, is near-instant once enrolled |
+| **EAS Build, `internal` distribution → direct APK link** | N/A | Works today, $0, no account needed | **Recommended for Android** — `eas build -p android --profile preview`, share the resulting URL or a QR code to it; installer just needs "install unknown apps" allowed once |
+| **Ad-hoc iOS build (.ipa link)** | Still needs a paid account to register device UDIDs for signing | N/A | No cheaper than TestFlight — same account requirement, worse UX. Skip. |
+| **PWA (web build)** | N/A | N/A | **Not viable** — QR handoff (camera) and payments (Stripe native SDK) are core features with no web equivalent in this stack; a web build would only show a crippled fraction of the app. Don't invest time here. |
+| **Loaner physical phones, pre-installed via USB** | $0, works today (existing `expo run:ios --device` workflow, cert already trusted) | $0, works today | **Recommended fallback for iOS** — bring the existing dev iPhone(s)/Galaxy pre-built, let visitors try it hands-on at the table instead of installing on their own phone |
+
+**Recommendation given the time left before demo day:** build the Android APK now (zero blockers) and lead with it as the "take it home" link; for iOS, decide this week whether the $99 Apple Developer enrollment is worth it for TestFlight — if not, rely on loaner devices at the booth. `eas.json`/EAS project setup doesn't exist yet in this repo — needs a first-time `eas build:configure` before the Android build can run.
+
+---
+
+## 🔍 NEW (2026-08-26): Code review prep
+
+A professional review of this codebase is coming. Findings from a first self-audit pass — nothing below has been fixed yet, this is the punch list:
+
+### Architecture — mostly sound, with one real gap
+**Good, worth pointing out to reviewers proactively:** every table has RLS enabled (except `public.spatial_ref_sys`, a PostGIS reference table with no user data — Supabase's own advisor flags it, but it's a non-issue); all cross-cutting rules (SAS actions, security-sensitive checks like the admin-can't-message-themselves fix) are enforced in Postgres RPCs, not just the UI; migrations are fully tracked in `supabase/migrations/`; the categories single-source-of-truth (`src/constants/categories.ts`) is a recent, real fix for a duplication problem.
+
+**The gap:** there's effectively no view/logic separation. `src/components/` holds only 2 files (289 lines total) and `src/hooks/` only 1 (`useUserLocation`), while `src/screens/` holds 11,362 lines across 29 files — business logic, data fetching, and presentation are all written inline per-screen. `ChatRoomScreen.tsx` is 1,913 lines (it's the SAS home for every rental action, so this is somewhat structural, not just sloppy — but it's still the single largest reviewable unit in the app). A reviewer will likely ask "why is this all screens" — worth having an answer ready, and worth extracting at least `ChatRoomScreen`'s biggest independent chunks (the rental-tab action logic vs. the message list) before the review if there's time.
+
+### File/folder structure — clean at the top level
+`components/config/constants/contexts/hooks/navigation/screens/services/theme/types/utils` is a sensible, conventional split and naming is consistent (PascalCase screens/components, camelCase services/utils). No action needed here beyond the screens-vs-components imbalance noted above.
+
+### Code standards — the concrete gaps
+- **No lint or format config at all** — no `.eslintrc`/`eslint.config.*`, no `.prettierrc`, no lint script in `package.json`. For a review by outside professionals, an unconfigured linter reads as "no enforced standard." Cheapest fix: `npx expo lint` (Expo ships a default config) plus Prettier with default settings — low effort, immediate credibility.
+- **No tests at all** — no test files, no test runner configured, no CI (no `.github/workflows`). This will very likely be the first thing reviewers flag. Not fixable in full before a review, but even a handful of tests around the highest-risk logic (RPC-calling functions in `src/services/`, the Impact Score calculation, refund tiering) would show testing intent rather than its total absence.
+- **55 occurrences of `: any`** across `src/` — real type-safety gaps in a codebase that otherwise runs `strict: true`. Worth a pass to replace with real types or `unknown` + narrowing, at least in the most-reused files (`src/services/*`, `src/types/*`).
+- **Zero `TODO`/`FIXME`/`HACK` markers** — genuinely clean, no action needed, but worth confirming reviewers won't misread the *absence* of markers as undocumented rough edges; the real known gaps are tracked here in `NEXT_STEP.md` instead.
+- **Duplicate `messageParty` in `AdminOverdueScreen`/`AdminDisputesScreen`** — already tracked below in the Backlog section ("New: `AdminOverdueScreen`/`AdminDisputesScreen` duplicate `messageParty`"), a good small item to knock out before the review since it's an easy, visible bit of duplication.
+- **See the CRITICAL item above** (Switch User / `testAccounts.ts`) — also relevant to a code review, not just demo day: a reviewer reading `ProfileScreen.tsx` will find a real-looking credential-switching feature shipped ungated, even though the actual secrets are gitignored.
+
+---
+
 # Backlog
 
 ### Q. Bulk photo scan — auto-fill multiple items from one photo

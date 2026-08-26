@@ -470,7 +470,7 @@ export default function ProfileScreen() {
               { Icon: Heart,         label: 'Wishlist',   onPress: () => { setMenuOpen(false); navigation.navigate('Wishlist'); } },
               { Icon: Clock,         label: 'History',    onPress: () => { setMenuOpen(false); navigation.navigate('History'); } },
               ...(isAdmin ? [{ Icon: ShieldCheck, label: 'Admin Console', onPress: () => { setMenuOpen(false); navigation.navigate('AdminHome'); } }] : []),
-              { Icon: Repeat,        label: 'Switch User', onPress: () => { setMenuOpen(false); setSwitchModal(true); } },
+              ...(__DEV__ ? [{ Icon: Repeat, label: 'Switch User', onPress: () => { setMenuOpen(false); setSwitchModal(true); } }] : []),
               { Icon: Download,      label: 'Export My Data', onPress: handleExportData },
             ].map(({ Icon, label, onPress }) => (
               <TouchableOpacity key={label} style={styles.sheetRow} onPress={onPress}>
