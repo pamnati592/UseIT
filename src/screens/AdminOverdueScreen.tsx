@@ -5,7 +5,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { supabase } from '../services/supabase';
-import { formatShortDate } from '../utils/format';
+import { formatShortDate, formatPrice } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { ChevronLeft, Clock, Package, ShieldCheck } from 'lucide-react-native';
@@ -77,7 +77,7 @@ export default function AdminOverdueScreen({ navigation }: Props) {
     }
     Alert.alert(
       'Charge overdue penalty?',
-      `₪${amount} will be charged to ${row.renter_name}'s saved card for keeping "${row.item_title}" ${row.late_days} days past due. This cannot be undone.`,
+      `${formatPrice(amount)} will be charged to ${row.renter_name}'s saved card for keeping "${row.item_title}" ${row.late_days} days past due. This cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -134,7 +134,7 @@ export default function AdminOverdueScreen({ navigation }: Props) {
         </View>
 
         <Text style={styles.accrued}>
-          Accrued daily late fee so far: <Text style={styles.accruedAmount}>₪{row.accrued_fee}</Text>
+          Accrued daily late fee so far: <Text style={styles.accruedAmount}>{formatPrice(row.accrued_fee)}</Text>
           <Text style={styles.accruedNote}> (charged automatically once returned)</Text>
         </Text>
 

@@ -11,6 +11,7 @@ import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { ChevronLeft, Package, Calendar, Pencil, Eye, EyeOff } from 'lucide-react-native';
+import { formatPrice } from '../utils/format';
 
 type Booking = {
   id: string;
@@ -168,7 +169,7 @@ export default function MyItemsScreen({ navigation }: Props) {
                   </View>
                   <View style={styles.cardMeta}>
                     <Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text>
-                    <Text style={styles.itemPrice}>₪{item.daily_price}/day</Text>
+                    <Text style={styles.itemPrice}>{formatPrice(item.daily_price)}/day</Text>
                   </View>
                   <Text style={styles.cardChevron}>›</Text>
                 </TouchableOpacity>

@@ -9,12 +9,11 @@ import type { HomeStackParamList } from '../navigation/HomeStackNavigator';
 import type { Item } from '../types/item';
 import { supabase } from '../services/supabase';
 import { useUserLocation } from '../hooks/useUserLocation';
-import { formatDistance } from '../utils/format';
+import { formatDistance, getImpactScore, formatPrice } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { MapPin, X, Heart, Leaf } from 'lucide-react-native';
-import { getImpactScore } from '../utils/format';
 import { CATEGORY_FILTER_CHIPS } from '../constants/categories';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -236,7 +235,7 @@ export default function HomeScreen({ navigation }: Props) {
                   <View style={styles.cardContent}>
                     <Text style={styles.itemTitle}>{item.title}</Text>
                     <Text style={styles.itemSubtitle} numberOfLines={2}>{item.description}</Text>
-                    <Text style={styles.itemPrice}>₪{item.daily_price}/day</Text>
+                    <Text style={styles.itemPrice}>{formatPrice(item.daily_price)}/day</Text>
                     {item.city && (
                       <View style={styles.cityRow}>
                         <MapPin size={13} color={colors.textMuted} />

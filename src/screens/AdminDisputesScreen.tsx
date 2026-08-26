@@ -6,7 +6,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { supabase } from '../services/supabase';
 import { signedUrlFor, HANDOFF_EVIDENCE_BUCKET } from '../services/storage';
-import { formatDateRange } from '../utils/format';
+import { formatDateRange, formatPrice } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { ChevronLeft, Scale, Package, ShieldCheck } from 'lucide-react-native';
@@ -159,7 +159,7 @@ export default function AdminDisputesScreen({ navigation }: Props) {
               : <View style={styles.itemThumbFallback}><Package size={18} color={colors.textMuted} /></View>}
             <View>
               <Text style={styles.itemTitle}>{d.item_title}</Text>
-              <Text style={styles.dateRange}>{formatDateRange(d.start_date, d.end_date)} · ₪{d.total_price}</Text>
+              <Text style={styles.dateRange}>{formatDateRange(d.start_date, d.end_date)} · {formatPrice(d.total_price)}</Text>
             </View>
           </View>
         </View>

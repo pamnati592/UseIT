@@ -7,7 +7,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
-import { formatShortDate } from '../utils/format';
+import { formatShortDate, formatPrice } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
@@ -167,7 +167,7 @@ export default function MyRentalsScreen({ navigation }: Props) {
                   <Text style={styles.lender} numberOfLines={1}>from {r.lender_name}</Text>
                 </View>
                 <View style={styles.right}>
-                  <Text style={styles.price}>₪{r.total_price}</Text>
+                  <Text style={styles.price}>{formatPrice(r.total_price)}</Text>
                   <View style={[styles.badge, { backgroundColor: color + '22', borderColor: color }]}>
                     <Text style={[styles.badgeText, { color }]}>{statusLabel(r)}</Text>
                   </View>

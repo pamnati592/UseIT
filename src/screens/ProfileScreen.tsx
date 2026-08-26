@@ -13,6 +13,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '../services/supabase';
 import { TEST_ACCOUNTS } from '../config/testAccounts';
 import type { Item } from '../types/item';
+import { formatPrice } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
@@ -333,7 +334,7 @@ export default function ProfileScreen() {
         }
         <View style={styles.itemInfo}>
           <Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text>
-          <Text style={styles.itemPrice}>₪{item.daily_price}/day</Text>
+          <Text style={styles.itemPrice}>{formatPrice(item.daily_price)}/day</Text>
           {item.city && (
             <View style={styles.itemCityRow}>
               <MapPin size={12} color={colors.textMuted} />

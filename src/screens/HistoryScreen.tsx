@@ -5,7 +5,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { supabase } from '../services/supabase';
-import { formatDateRange } from '../utils/format';
+import { formatDateRange, formatPrice } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
@@ -177,14 +177,14 @@ export default function HistoryScreen() {
           </View>
           {row.kind === 'rental' ? (
             <>
-              <Text style={styles.rowSub}>{formatDateRange(row.startDate, row.endDate)} · ₪{row.totalPrice}</Text>
+              <Text style={styles.rowSub}>{formatDateRange(row.startDate, row.endDate)} · {formatPrice(row.totalPrice)}</Text>
               <Text style={styles.rowOther}>
                 {roleTab === 'renting' ? `Lender: ${row.otherName}` : `Renter: ${row.otherName}`}
               </Text>
             </>
           ) : (
             <>
-              <Text style={styles.rowSub}>Sold for ₪{row.price}</Text>
+              <Text style={styles.rowSub}>Sold for {formatPrice(row.price)}</Text>
               <Text style={styles.rowOther}>Buyer: {row.buyerName}</Text>
             </>
           )}

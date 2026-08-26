@@ -12,7 +12,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
 import { supabase } from '../services/supabase';
 import type { Database } from '../types/database';
-import { formatDateRange as formatDateRangeUtil } from '../utils/format';
+import { formatDateRange as formatDateRangeUtil, formatPrice } from '../utils/format';
 import { chatBus } from '../services/chatBus';
 import { insertSystemMessage as sharedInsertSystemMessage } from '../services/chatMessages';
 import { uploadImage, HANDOFF_EVIDENCE_BUCKET, disputePhotoPath } from '../services/storage';
@@ -1064,7 +1064,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
               <Text style={[styles.requestStatusPillText, { color: statusMeta.color }]}>{statusMeta.label}</Text>
             </View>
           </View>
-          <Text style={styles.requestSubText}>₪{purchase.price}</Text>
+          <Text style={styles.requestSubText}>{formatPrice(purchase.price)}</Text>
 
           <View style={styles.requestStatus}>
             {purchase.status === 'pending' && (
@@ -1173,7 +1173,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
           </View>
           {tx && (
             <Text style={styles.requestSubText}>
-              {daysBetweenTx(tx)} day{daysBetweenTx(tx) > 1 ? 's' : ''} · ₪{tx.total_price}
+              {daysBetweenTx(tx)} day{daysBetweenTx(tx) > 1 ? 's' : ''} · {formatPrice(tx.total_price)}
             </Text>
           )}
 

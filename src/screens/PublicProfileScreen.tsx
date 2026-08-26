@@ -12,6 +12,7 @@ import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { ChevronLeft, ChevronRight, MapPin, Check, X, TriangleAlert, Flag } from 'lucide-react-native';
+import { formatPrice } from '../utils/format';
 
 const REPORT_REASONS = ['Harassment', 'Scam or fraud', 'Inappropriate content', 'Item not as described', 'Other'];
 
@@ -140,7 +141,7 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
         }
         <View style={styles.itemInfo}>
           <Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text>
-          <Text style={styles.itemPrice}>₪{item.daily_price}/day</Text>
+          <Text style={styles.itemPrice}>{formatPrice(item.daily_price)}/day</Text>
           {item.city && (
             <View style={styles.itemCityRow}>
               <MapPin size={12} color={colors.textMuted} />

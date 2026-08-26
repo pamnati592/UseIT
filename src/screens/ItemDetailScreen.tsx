@@ -13,7 +13,7 @@ import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { ChevronLeft, ChevronRight, MapPin, Tag, ShoppingCart, Heart, MessageCircle, X, Leaf, Star } from 'lucide-react-native';
-import { getImpactScore, formatDateRange } from '../utils/format';
+import { getImpactScore, formatDateRange, formatPrice } from '../utils/format';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const TODAY = new Date().toISOString().split('T')[0];
@@ -428,9 +428,9 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
             )}
 
             <View style={styles.metaRow}>
-              <Text style={styles.price}>₪{item.daily_price}/day</Text>
+              <Text style={styles.price}>{formatPrice(item.daily_price)}/day</Text>
               {item.sale_price != null && (
-                <Text style={styles.salePrice}>Buy: ₪{item.sale_price}</Text>
+                <Text style={styles.salePrice}>Buy: {formatPrice(item.sale_price)}</Text>
               )}
             </View>
 
@@ -607,9 +607,9 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
           {totalDays != null && totalPrice != null && (
             <View style={styles.summaryBox}>
               <Text style={styles.summaryText}>
-                {totalDays} day{totalDays > 1 ? 's' : ''} × ₪{item.daily_price}/day
+                {totalDays} day{totalDays > 1 ? 's' : ''} × {formatPrice(item.daily_price)}/day
               </Text>
-              <Text style={styles.summaryTotal}>Total: ₪{totalPrice}</Text>
+              <Text style={styles.summaryTotal}>Total: {formatPrice(totalPrice)}</Text>
             </View>
           )}
 
