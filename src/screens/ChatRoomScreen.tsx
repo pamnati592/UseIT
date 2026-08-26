@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
+  View, Text, FlatList, TextInput, TouchableOpacity,
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, Image,
   Keyboard, TouchableWithoutFeedback, type ListRenderItemInfo,
 } from 'react-native';
@@ -8,16 +8,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStripe } from '@stripe/stripe-react-native';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
 import { supabase } from '../services/supabase';
 import type { Database } from '../types/database';
-import { formatDateRange as formatDateRangeUtil, formatPrice } from '../utils/format';
+import { formatPrice } from '../utils/format';
 import { chatBus } from '../services/chatBus';
 import { insertSystemMessage as sharedInsertSystemMessage } from '../services/chatMessages';
 import { uploadImage, HANDOFF_EVIDENCE_BUCKET, disputePhotoPath } from '../services/storage';
 import { useTheme } from '../theme/ThemeContext';
-import type { ThemeColors } from '../theme/colors';
 import { useAdminMode } from '../contexts/AdminModeContext';
 import { CategoryIcon } from '../components/CategoryIcon';
 import {
@@ -25,100 +22,15 @@ import {
   ScanLine, QrCode, CircleCheck, TriangleAlert, MapPin, MessageSquare, Scale, UserRound, ShoppingCart, Camera,
   ShieldCheck, Info,
 } from 'lucide-react-native';
-
-const LATE_RETURN_POLICY_TEXT =
-  'A late fee equal to the item’s daily rate is charged automatically for every day it isn’t returned after the agreed end date. If it’s more than 14 days overdue, UseIT may also charge a separate one-time penalty based on the item’s value, decided case by case.';
-
-// Status label/color shown on the rental-request card's status pill — the card
-// itself is the single live status board for that date range (see requestCard).
-const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
-  pending:   { label: 'Pending',   color: '#b45309', bg: 'rgba(245,158,11,0.15)' },
-  approved:  { label: 'Approved',  color: '#15803d', bg: 'rgba(34,197,94,0.15)' },
-  paid:      { label: 'Paid',      color: '#1d4ed8', bg: 'rgba(59,130,246,0.15)' },
-  active:    { label: 'Active',    color: '#15803d', bg: 'rgba(34,197,94,0.15)' },
-  completed: { label: 'Completed', color: '#6b7280', bg: 'rgba(107,114,128,0.15)' },
-  rejected:  { label: 'Declined',  color: '#b91c1c', bg: 'rgba(239,68,68,0.15)' },
-  disputed:  { label: 'Disputed',  color: '#b91c1c', bg: 'rgba(239,68,68,0.15)' },
-  cancelled: { label: 'Cancelled', color: '#6b7280', bg: 'rgba(107,114,128,0.15)' },
-};
-
-// Overrides the plain "Active" pill once a rental's end_date has passed —
-// the status itself should say what's actually going on, not require reading
-// a paragraph of colored text further down the card.
-const LATE_RETURN_META = { label: 'Late Return', color: '#b91c1c', bg: 'rgba(239,68,68,0.15)' };
-
-// Overrides Completed/Cancelled once UseIT has ruled on a dispute — same
-// "status pill + info icon" pattern as Late Return: the ruling and any note
-// live behind the ⓘ instead of as a permanent paragraph on the card, but the
-// pill itself still makes clear at a glance that this wasn't an ordinary
-// completion/cancellation.
-const RESOLVED_META = { label: 'Resolved', color: '#6d28d9', bg: 'rgba(109,40,217,0.15)' };
-
-// Same idea for purchase cards — mirrors the rental pending -> approved/rejected -> paid flow.
-const PURCHASE_STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
-  pending:   { label: 'Pending',    color: '#b45309', bg: 'rgba(245,158,11,0.15)' },
-  approved:  { label: 'Approved',   color: '#15803d', bg: 'rgba(34,197,94,0.15)' },
-  rejected:  { label: 'Declined',   color: '#b91c1c', bg: 'rgba(239,68,68,0.15)' },
-  paid:      { label: 'Purchased',  color: '#15803d', bg: 'rgba(34,197,94,0.15)' },
-  cancelled: { label: 'Cancelled',  color: '#6b7280', bg: 'rgba(107,114,128,0.15)' },
-};
-
-type Message = {
-  id: string;
-  sender_id: string;
-  content: string;
-  created_at: string;
-  transaction_id?: string | null;
-};
-
-type Transaction = {
-  id: string;
-  status: string;
-  start_date: string;
-  end_date: string;
-  total_price: number;
-  approved_at?: string | null;
-};
-
-type AdminCharge = {
-  reason: 'damage' | 'late_fee_daily' | 'late_fee_cliff';
-  amount: number;
-  status: 'succeeded' | 'failed';
-  created_at: string;
-};
-
-type Purchase = {
-  id: string;
-  item_id: string;
-  buyer_id: string;
-  seller_id: string;
-  price: number;
-  status: 'pending' | 'approved' | 'rejected' | 'paid' | 'cancelled';
-  created_at: string;
-};
-
-type ConversationInfo = {
-  lender_id: string;
-  renter_id: string;
-  item_id: string;
-};
-
-const RENTAL_REQUEST_PREFIX = '📅 Rental request:';
-
-// Declining at pickup cancels the rental and frees the dates with no cancellation
-// penalty, so it needs friction — a renter should not be able to back out of a
-// booking on the day with one tap. Requiring a written reason (which the lender
-// then sees in the chat) is that friction. Tune here if it proves too strict.
-const DECLINE_REASON_MIN = 10;
-
-// One feed row for the Deal Board / Chat tabs — chat bubbles, rental status
-// cards, and purchase status cards are all rendered from the same FlatList.
-type FeedRow =
-  | { kind: 'chat'; key: string; msg: Message }
-  | { kind: 'rental'; key: string; msg: Message; tx: Transaction | null }
-  | { kind: 'purchase'; key: string; purchase: Purchase };
-
-type Props = NativeStackScreenProps<ChatsStackParamList, 'ChatRoom'>;
+import { makeStyles } from './ChatRoomScreen.styles';
+import {
+  LATE_RETURN_POLICY_TEXT, STATUS_META, LATE_RETURN_META, RESOLVED_META, PURCHASE_STATUS_META,
+  RENTAL_REQUEST_PREFIX, DECLINE_REASON_MIN,
+  type Message, type Transaction, type AdminCharge, type Purchase, type ConversationInfo, type FeedRow, type Props,
+} from './ChatRoomScreen.constants';
+import {
+  formatDisputeResolution, formatDateRange, daysBetweenTx, canCancelTx, lateDaysFor, chargeLabel, refundTierLabel,
+} from './ChatRoomScreen.helpers';
 
 export default function ChatRoomScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
@@ -496,65 +408,6 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       chatBus.notify();
     }
     setSending(false);
-  }
-
-  // disputes.resolution is stored as 'favor_renter'/'favor_lender', optionally
-  // followed by ": {admin note}" — see admin_resolve_dispute. Parsed here
-  // rather than duplicating the phrasing in two places (SQL for the chat
-  // message, TS for the card).
-  function formatDisputeResolution(raw: string): string {
-    const isRenter = raw.startsWith('favor_renter');
-    const noteIdx = raw.indexOf(': ');
-    const note = noteIdx >= 0 ? raw.slice(noteIdx + 2) : null;
-    return `⚖️ UseIT ruled in favor of the ${isRenter ? 'renter' : 'lender'}.${note ? ' ' + note : ''}`;
-  }
-
-  function formatDateRange(tx: Transaction): string {
-    return formatDateRangeUtil(tx.start_date, tx.end_date);
-  }
-
-  function daysBetweenTx(tx: Transaction): number {
-    const a = new Date(tx.start_date);
-    const b = new Date(tx.end_date);
-    return Math.round((b.getTime() - a.getTime()) / 86_400_000) + 1;
-  }
-
-  // Rental dates are stored as midnight-of-day, representing a whole calendar
-  // day rather than an instant — so comparisons must be day-granularity, not
-  // millisecond. Cancellation is always allowed pre-pickup (approved/paid)
-  // through the rental's last day; the day-based refund tier below controls
-  // the amount, not whether cancel is offered.
-  function dayKey(iso: string): string {
-    return new Date(iso).toISOString().slice(0, 10);
-  }
-
-  function canCancelTx(tx: Transaction): boolean {
-    return dayKey(new Date().toISOString()) <= dayKey(tx.end_date);
-  }
-
-  // Same day-key math as charge-late-fee's server-side calculation — the card
-  // must agree with what actually gets charged, not compute its own notion of
-  // "late" from a different clock.
-  function lateDaysFor(tx: Transaction): number {
-    const days = (new Date(dayKey(new Date().toISOString())).getTime() - new Date(dayKey(tx.end_date)).getTime()) / 86400000;
-    return Math.max(0, Math.round(days));
-  }
-
-  function chargeLabel(c: AdminCharge): string {
-    const what = c.reason === 'damage' ? 'Damage' : c.reason === 'late_fee_cliff' ? 'Overdue penalty' : 'Late fee';
-    return c.status === 'succeeded'
-      ? `💰 ${what} charged: ${formatPrice(c.amount)}`
-      : `⚠️ ${what} assessed (${formatPrice(c.amount)}) — automatic charge failed, contact UseIT support`;
-  }
-
-  // Mirrors refund-payment's server-side tier so the confirmation dialog shows
-  // the real number before the user commits — the server remains authoritative.
-  // Rentals run by the day, not the hour: cancel before the start day for a
-  // full refund; cancelling on (or after) the start day charges 75%.
-  function refundTierLabel(startDate: string): string {
-    return dayKey(startDate) <= dayKey(new Date().toISOString())
-      ? 'a 25% refund (cancelling on the rental start day)'
-      : 'a full refund';
   }
 
   // Update conversation timestamp BEFORE inserting the message so that when the
@@ -1712,222 +1565,3 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     </SafeAreaView>
   );
 }
-
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: colors.border,
-    backgroundColor: colors.bg,
-  },
-  backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  backText: { color: colors.text, fontSize: 22, fontWeight: '300' },
-  itemAvatar: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: colors.cardAlt, alignItems: 'center', justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  itemAvatarImg: { width: 36, height: 36, borderRadius: 18 },
-  headerInfo: { flex: 1 },
-  headerName: { fontSize: 16, fontWeight: '600', color: colors.text },
-  headerItemRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 },
-  headerItem: { fontSize: 12, color: colors.textFaint, flexShrink: 1 },
-  calendarBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  calendarBtnText: { fontSize: 20 },
-
-  messageList: { padding: 16, gap: 8 },
-  bubbleWrapper: { marginVertical: 2, maxWidth: '80%' },
-  bubbleWrapperMe: { alignSelf: 'flex-end', alignItems: 'flex-end' },
-  bubbleWrapperThem: { alignSelf: 'flex-start', alignItems: 'flex-start' },
-  bubble: { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 10 },
-  bubbleMe: { backgroundColor: colors.btn, borderBottomRightRadius: 4 },
-  bubbleThem: { backgroundColor: colors.card, borderBottomLeftRadius: 4 },
-  bubbleText: { fontSize: 15, lineHeight: 20 },
-  bubbleTextMe: { color: colors.btnText },
-  bubbleTextThem: { color: colors.text },
-  bubbleTime: { fontSize: 11, marginTop: 3, color: colors.textFaint },
-  bubbleTimeMe: { textAlign: 'right' },
-  bubbleTimeThem: { textAlign: 'left' },
-
-  // Rental request card — the live status board for one rental date range
-  requestCard: {
-    alignSelf: 'center', width: '92%', marginVertical: 8,
-    backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
-    borderRadius: 16, padding: 16, gap: 10,
-    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
-  },
-  requestHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  requestHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 7, flexShrink: 1 },
-  requestDateText: { color: colors.text, fontSize: 15, fontWeight: '700', flexShrink: 1 },
-  requestSubText: { color: colors.textMuted, fontSize: 13, marginTop: -6 },
-  requestStatusRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  requestStatusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  requestStatusPillText: { fontSize: 12, fontWeight: '700' },
-  requestStatus: { gap: 8, marginTop: 2, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.border },
-  requestActions: { flexDirection: 'row', gap: 10 },
-  viewProfileBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingVertical: 10, marginTop: 2,
-  },
-  viewProfileText: { color: colors.primary, fontSize: 13, fontWeight: '600' },
-  approveBtn: {
-    flex: 1, height: 44, backgroundColor: colors.btn,
-    borderRadius: 10, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center',
-  },
-  approveBtnText: { color: colors.btnText, fontWeight: '700', fontSize: 15 },
-  rejectBtn: {
-    flex: 1, height: 44,
-    borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 10,
-    flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center',
-  },
-  rejectBtnText: { color: colors.textSecondary, fontWeight: '600', fontSize: 15 },
-  btnDisabled: { opacity: 0.4 },
-  approvedRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  statusChip: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  handoffBlock: { gap: 10 },
-  qrActionBtn: {
-    height: 44, backgroundColor: colors.btn, borderRadius: 10,
-    flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center',
-  },
-  qrActionText: { color: colors.btnText, fontWeight: '700', fontSize: 15 },
-  handoffSecondary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  statusExpired: { color: colors.warning, fontWeight: '600', fontSize: 13 },
-  // Plain-language caption shown for every rental status — what stage this is
-  // and what (if anything) needs to happen next, role-aware.
-  helperText: { fontSize: 13.5, color: colors.textSecondary, lineHeight: 19 },
-  overdueText: { fontSize: 13.5, color: colors.danger, lineHeight: 19, fontWeight: '600' },
-  helperTextFlex: { flex: 1 },
-  messageSupportBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
-    marginTop: 8, paddingVertical: 6, paddingHorizontal: 10,
-    borderRadius: 8, borderWidth: 1, borderColor: colors.primary,
-  },
-  messageSupportBtnText: { color: colors.primary, fontSize: 13, fontWeight: '600' },
-  payBtn: {
-    height: 44, backgroundColor: colors.btn, borderRadius: 10,
-    flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center',
-    width: '100%',
-  },
-  payBtnText: { color: colors.btnText, fontWeight: '700', fontSize: 15 },
-  requestTime: { color: colors.textFaint, fontSize: 11, textAlign: 'right' },
-  cancelRentalBtn: {
-    paddingHorizontal: 12, paddingVertical: 6,
-    backgroundColor: colors.dangerBg, borderRadius: 8, borderWidth: 1, borderColor: colors.danger,
-  },
-  cancelRentalBtnText: { color: colors.danger, fontSize: 12, fontWeight: '700' },
-
-  inputRow: {
-    flexDirection: 'row', alignItems: 'flex-end', gap: 10,
-    paddingHorizontal: 16, paddingVertical: 12,
-    borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.bg,
-  },
-  input: {
-    flex: 1, minHeight: 44, maxHeight: 120,
-    backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border,
-    borderRadius: 22, paddingHorizontal: 16, paddingVertical: 10,
-    color: colors.text, fontSize: 15,
-  },
-  sendBtn: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: colors.btn, alignItems: 'center', justifyContent: 'center',
-  },
-  sendBtnDisabled: { backgroundColor: colors.card },
-  sendBtnText: { fontSize: 20, color: colors.btnText, fontWeight: '600', marginTop: -2 },
-
-  tabBar: {
-    flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border,
-    backgroundColor: colors.bg,
-  },
-  tab: { flex: 1, paddingVertical: 12, alignItems: 'center' },
-  tabActive: { borderBottomWidth: 2, borderBottomColor: colors.btn },
-  tabText: { fontSize: 14, color: colors.textFaint, fontWeight: '500' },
-  tabTextActive: { color: colors.text, fontWeight: '600' },
-  tabInner: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  tabBadge: {
-    backgroundColor: colors.warning, borderRadius: 10,
-    minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  tabBadgeText: { color: colors.btnText, fontSize: 10, fontWeight: '800' },
-
-  emptyTab: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 },
-  emptyTabText: { color: colors.textFaint, fontSize: 15 },
-
-  // Meeting Point button
-  meetingBtn: {
-    height: 40, borderRadius: 10,
-    borderWidth: 1, borderColor: colors.primary,
-    flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center',
-  },
-  meetingBtnText: { color: colors.primary, fontWeight: '600', fontSize: 14 },
-
-  // Dispute Modal
-  modalOverlay: {
-    flex: 1, backgroundColor: colors.overlay,
-    justifyContent: 'flex-end',
-  },
-  modalSheet: {
-    backgroundColor: colors.card,
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    paddingHorizontal: 20, paddingBottom: 40, paddingTop: 12,
-    gap: 14,
-  },
-  modalHandle: {
-    alignSelf: 'center', width: 40, height: 4,
-    borderRadius: 2, backgroundColor: colors.border, marginBottom: 6,
-  },
-  modalIconRow: { alignItems: 'center' },
-  modalIconCircle: {
-    width: 56, height: 56, borderRadius: 28,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  modalTitle: { fontSize: 20, fontWeight: '700', color: colors.text, textAlign: 'center' },
-  modalBody: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', lineHeight: 20 },
-  arbitrationBox: {
-    backgroundColor: colors.dangerBg, borderRadius: 12,
-    borderLeftWidth: 3, borderLeftColor: colors.danger,
-    padding: 14,
-  },
-  arbitrationText: { fontSize: 13, color: colors.text, lineHeight: 20, fontStyle: 'italic' },
-  disputePreview: { width: '100%', height: 160, borderRadius: 12 },
-  disputeCameraTile: {
-    height: 120, borderRadius: 12,
-    backgroundColor: colors.card, borderWidth: 1.5, borderColor: colors.border,
-    borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', gap: 8,
-  },
-  cameraTileText: { color: colors.textMuted, fontSize: 14, fontWeight: '500' },
-  disputeInput: {
-    borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
-    fontSize: 14, minHeight: 72, textAlignVertical: 'top',
-  },
-  modalPrimaryBtn: {
-    height: 52, backgroundColor: colors.btn, borderRadius: 14,
-    flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center',
-  },
-  modalPrimaryBtnText: { color: colors.btnText, fontSize: 15, fontWeight: '700' },
-  modalOutlineBtn: {
-    height: 48, borderRadius: 14, borderWidth: 1, borderColor: colors.primary,
-    flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center',
-  },
-  modalOutlineBtnText: { color: colors.primary, fontSize: 14, fontWeight: '700' },
-  modalSecondaryBtn: { alignItems: 'center', paddingVertical: 8 },
-  modalSecondaryBtnText: { color: colors.primary, fontSize: 14, fontWeight: '600' },
-  modalCancelLink: { alignItems: 'center', paddingVertical: 4 },
-  modalCancelLinkText: { color: colors.textFaint, fontSize: 14 },
-  declineInput: {
-    borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
-    fontSize: 14, minHeight: 72, textAlignVertical: 'top',
-  },
-  declineHint: { fontSize: 12, color: colors.textFaint, textAlign: 'center', marginTop: -6 },
-
-  highlighted: {
-    borderColor: colors.primary,
-    borderWidth: 2,
-    shadowColor: colors.primary,
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-});
