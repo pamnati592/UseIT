@@ -4,7 +4,7 @@
 
 # SwipeAndRent
 
-**A P2P rental marketplace — swipe to discover nearby gear, rent it securely, and verify every handoff with a QR code.**
+**A P2P rental marketplace — swipe to discover nearby gear, chat with the owner, and rent it securely.**
 
 [![React Native](https://img.shields.io/badge/React_Native-20232A?style=flat&logo=react&logoColor=61DAFB)](https://reactnative.dev/)
 [![Expo](https://img.shields.io/badge/Expo-000020?style=flat&logo=expo&logoColor=white)](https://expo.dev/)
@@ -30,12 +30,17 @@ Built as a cross-platform mobile app (iOS + Android) using React Native and Expo
 |---|---|---|
 | 📍 | **Location-based Feed** | Swipe through items sorted by distance from your location |
 | 💬 | **Real-time Chat** | Message lenders directly; rental requests flow through the chat |
-| 🔐 | **Escrow Payments** | Funds held securely and released only after confirmed return |
-| 📷 | **QR Transfer Verification** | Unique QR per transaction — scanned on pickup and return |
-| 🤖 | **AI Smart Search** | Groq-powered agent that finds items matching a free-text query |
+| ✨ | **AI Auto-Fill** | Snap a photo of your item — a Groq vision model suggests title, category, description, and price |
+| 🤖 | **AI Trip Planner** | Groq-powered agent that finds items matching a free-text query and real availability |
+| 🔐 | **Escrow-style Payments** | Stripe Connect holds funds and releases them to the lender after a confirmed return |
+| 📷 | **QR Transfer Verification** | Unique QR per transaction, GPS-proximity checked, scanned on pickup and return |
+| ⭐ | **Reputation & Trust Score** | Separate lender/renter ratings and written reviews feed a trust tier that discounts platform fees |
+| 🛡️ | **Trust & Safety Console** | Admin dispute resolution, user reports, listing moderation, and an overdue-rentals queue |
+| 🔒 | **Biometric Security Gate** | Face ID / Touch ID required before listing an item or committing to a rental |
 | ❤️ | **Wishlist** | Save items and come back to them later |
 | 🗓️ | **Availability Calendar** | Request specific dates; conflicts are blocked automatically |
 | 🛡️ | **Verified Listings** | Items go through a verification flow before going live |
+| 🔑 | **Account Controls** | Full account deletion and GDPR-style data export, self-serve from the app |
 
 ---
 
@@ -50,7 +55,15 @@ Built as a cross-platform mobile app (iOS + Android) using React Native and Expo
 | Payments | Stripe (Escrow flow, test mode) |
 | Maps & Location | Google Maps API |
 | AI Agent | Groq |
-| Push Notifications | Firebase Cloud Messaging |
+| Local Notifications | Expo Notifications |
+
+---
+
+## Project Status & Scope
+
+SwipeAndRent is a complete, working concept: the product, the technical architecture, and every core user flow — browsing, chat, AI-assisted listing, payment, QR handoff, disputes, reputation, admin moderation — are built and demonstrable end-to-end.
+
+Turning it into an operating business is a separate step from the software, and nothing on that side is finalized yet. In particular: the escrow-style payment flow is built on Stripe Connect and works fully in Stripe's test mode, but Stripe Connect's own onboarding doesn't currently offer Israel as a supported business country — so running this as a live payment platform there would need a different payment provider, or a business entity registered elsewhere. More generally, we haven't registered a business or done the legal/compliance work an operating marketplace would need; that's deliberately out of scope for this repository.
 
 ---
 
@@ -112,7 +125,7 @@ npx expo run:android   # Android emulator or connected device
 npx expo start
 ```
 
-> Requires a `.env` file with your Supabase URL, anon key, Stripe publishable key, and Google Maps API key.
+> Requires a `.env` file with your Supabase URL, anon key, Stripe publishable key, Google Maps API key, and Groq key — see `.env.example`.
 
 ---
 
