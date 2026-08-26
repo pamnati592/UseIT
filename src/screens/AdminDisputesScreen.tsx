@@ -6,6 +6,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { supabase } from '../services/supabase';
 import { signedUrlFor, HANDOFF_EVIDENCE_BUCKET } from '../services/storage';
+import { formatDateRange } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { ChevronLeft, Scale, Package, ShieldCheck } from 'lucide-react-native';
@@ -67,11 +68,6 @@ export default function AdminDisputesScreen({ navigation }: Props) {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
-
-  function formatDateRange(start: string, end: string): string {
-    const fmt = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-    return `${fmt(start)} → ${fmt(end)}`;
-  }
 
   // Called only from "Publish Ruling" — the admin has already picked a side
   // and reviewed the fields, so this is the actual send, not a second

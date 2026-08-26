@@ -12,6 +12,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
 import { supabase } from '../services/supabase';
 import type { Database } from '../types/database';
+import { formatDateRange as formatDateRangeUtil } from '../utils/format';
 import { chatBus } from '../services/chatBus';
 import { insertSystemMessage as sharedInsertSystemMessage } from '../services/chatMessages';
 import { uploadImage, HANDOFF_EVIDENCE_BUCKET, disputePhotoPath } from '../services/storage';
@@ -509,9 +510,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   }
 
   function formatDateRange(tx: Transaction): string {
-    const fmt = (iso: string) =>
-      new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-    return `${fmt(tx.start_date)} → ${fmt(tx.end_date)}`;
+    return formatDateRangeUtil(tx.start_date, tx.end_date);
   }
 
   function daysBetweenTx(tx: Transaction): number {

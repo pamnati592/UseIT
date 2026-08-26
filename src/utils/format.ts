@@ -28,6 +28,22 @@ export function getImpactScore(category: string, completedRentalCount: number = 
   return Math.min(5.0, categoryImpactBase(category) + 0.1 * completedRentalCount);
 }
 
+// Short date label used throughout the rental/history UI, e.g. "27 Aug".
+export function formatShortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+// "27 Aug → 28 Aug" — the standard rental date-range label.
+export function formatDateRange(start: string, end: string): string {
+  return `${formatShortDate(start)} → ${formatShortDate(end)}`;
+}
+
+// "₪150" — deliberately no locale/decimal formatting; every price in this
+// app is a whole-shekel amount.
+export function formatPrice(value: number): string {
+  return `₪${value}`;
+}
+
 // Great-circle distance in meters between two lat/lng points (Haversine).
 // Used for the QR handoff 50m proximity check (spec 4.9).
 export function metersBetween(

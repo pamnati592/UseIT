@@ -46,10 +46,6 @@ const STATUS_LABELS: Record<string, string> = {
 
 type Props = NativeStackScreenProps<ProfileStackParamList, 'MyItems'>;
 
-function fmt(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-}
-
 export default function MyItemsScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);

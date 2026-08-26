@@ -5,6 +5,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { supabase } from '../services/supabase';
+import { formatShortDate } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { ChevronLeft, Clock, Package, ShieldCheck } from 'lucide-react-native';
@@ -65,9 +66,7 @@ export default function AdminOverdueScreen({ navigation }: Props) {
     }
   }
 
-  function formatDate(iso: string): string {
-    return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-  }
+  const formatDate = formatShortDate;
 
   async function chargeCliffFine(row: OverdueRow) {
     const raw = fineAmounts[row.transaction_id]?.trim();

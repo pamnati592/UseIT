@@ -7,6 +7,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
+import { formatShortDate } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
@@ -50,9 +51,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 type Props = NativeStackScreenProps<ProfileStackParamList, 'MyRentals'>;
 
-function fmt(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-}
+const fmt = formatShortDate;
 
 function isPaymentExpired(approvedAt: string | null): boolean {
   if (!approvedAt) return false;
