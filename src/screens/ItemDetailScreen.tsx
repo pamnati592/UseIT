@@ -221,7 +221,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
       const days = daysBetween(selectedStart, selectedEnd);
       const totalPrice = days * item.daily_price;
 
-      const message = `📅 Rental request: ${formatDateRange(selectedStart, selectedEnd)} (${days} day${days > 1 ? 's' : ''}) · ₪${totalPrice}. Awaiting your approval.`;
+      const message = `📅 Rental request: ${formatDateRange(selectedStart, selectedEnd)} (${days} day${days > 1 ? 's' : ''}) · ${formatPrice(totalPrice)}. Awaiting your approval.`;
 
       // Single atomic RPC — conversation + transaction + message in one DB transaction
       const { data, error } = await supabase.rpc('create_rental_request', {

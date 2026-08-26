@@ -543,8 +543,8 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   function chargeLabel(c: AdminCharge): string {
     const what = c.reason === 'damage' ? 'Damage' : c.reason === 'late_fee_cliff' ? 'Overdue penalty' : 'Late fee';
     return c.status === 'succeeded'
-      ? `💰 ${what} charged: ₪${c.amount}`
-      : `⚠️ ${what} assessed (₪${c.amount}) — automatic charge failed, contact UseIT support`;
+      ? `💰 ${what} charged: ${formatPrice(c.amount)}`
+      : `⚠️ ${what} assessed (${formatPrice(c.amount)}) — automatic charge failed, contact UseIT support`;
   }
 
   // Mirrors refund-payment's server-side tier so the confirmation dialog shows
