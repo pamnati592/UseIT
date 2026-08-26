@@ -121,7 +121,7 @@ export default function ManageItemScreen({ navigation, route }: Props) {
     ]);
 
     setRentalRanges(
-      (txRes.data ?? []).map((t: any) => ({
+      (txRes.data ?? []).map(t => ({
         id: t.id,
         start: t.start_date.split('T')[0],
         end: t.end_date.split('T')[0],

@@ -17,6 +17,21 @@ export type ResolvedPlace = {
   lng: number;
 };
 
+// Minimal shapes for the two Google REST APIs used here — see
+// https://developers.google.com/maps/documentation/places/web-service/autocomplete
+// and https://developers.google.com/maps/documentation/geocoding/requests-geocoding
+type GooglePrediction = {
+  place_id: string;
+  description: string;
+  structured_formatting?: { main_text?: string; secondary_text?: string };
+};
+
+type GoogleAddressComponent = {
+  long_name: string;
+  short_name: string;
+  types: string[];
+};
+
 // Autocomplete for city-type results. Empty input returns [].
 // Uses a session token so Google bills suggestions + final details as one
 // transaction (recommended for billing optimization).
@@ -39,7 +54,7 @@ export async function autocompleteCities(
   if (json.status !== 'OK' && json.status !== 'ZERO_RESULTS') {
     throw new Error(json.error_message || json.status);
   }
-  return (json.predictions ?? []).map((p: any) => ({
+  return ((json.predictions ?? []) as GooglePrediction[]).map(p => ({
     placeId: p.place_id,
     description: p.description,
     primaryText: p.structured_formatting?.main_text ?? p.description,
@@ -93,10 +108,11 @@ export async function reverseGeocodeToCity(
   if (json.status !== 'OK') throw new Error(json.error_message || json.status);
 
   const result = json.results[0];
+  const addressComponents = result.address_components as GoogleAddressComponent[];
   const cityComponent =
-    result.address_components.find((c: any) => c.types.includes('locality')) ??
-    result.address_components.find((c: any) => c.types.includes('administrative_area_level_2')) ??
-    result.address_components.find((c: any) => c.types.includes('administrative_area_level_1'));
+    addressComponents.find(c => c.types.includes('locality')) ??
+    addressComponents.find(c => c.types.includes('administrative_area_level_2')) ??
+    addressComponents.find(c => c.types.includes('administrative_area_level_1'));
 
   return {
     city: cityComponent?.long_name ?? result.formatted_address,

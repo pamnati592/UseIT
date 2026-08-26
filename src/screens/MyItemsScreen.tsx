@@ -88,7 +88,7 @@ export default function MyItemsScreen({ navigation }: Props) {
     if (!itemsRes.data) { setLoading(false); return; }
 
     const txByItem: Record<string, Booking[]> = {};
-    (txRes.data ?? []).forEach((tx: any) => {
+    (txRes.data ?? []).forEach(tx => {
       if (!txByItem[tx.item_id]) txByItem[tx.item_id] = [];
       txByItem[tx.item_id].push({
         id: tx.id,
@@ -100,10 +100,10 @@ export default function MyItemsScreen({ navigation }: Props) {
       });
     });
 
-    const soldItemIds = new Set((soldRes.data ?? []).map((p: any) => p.item_id));
+    const soldItemIds = new Set((soldRes.data ?? []).map(p => p.item_id));
 
     setItems(
-      (itemsRes.data as any[]).map(item => ({
+      itemsRes.data.map(item => ({
         ...item,
         description: item.description ?? null,
         sale_price: item.sale_price ?? null,

@@ -3,6 +3,7 @@ import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
+import type { Session } from '@supabase/supabase-js';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -87,7 +88,7 @@ export function getCurrentUser() {
   return supabase.auth.getUser();
 }
 
-export function onAuthStateChange(callback: (session: any) => void) {
+export function onAuthStateChange(callback: (session: Session | null) => void) {
   return supabase.auth.onAuthStateChange((_event, session) => {
     callback(session);
   });

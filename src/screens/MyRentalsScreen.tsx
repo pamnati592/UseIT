@@ -85,7 +85,7 @@ export default function MyRentalsScreen({ navigation }: Props) {
       .order('created_at', { ascending: false });
 
     setRentals(
-      (data ?? []).map((tx: any) => ({
+      (data ?? []).map(tx => ({
         id: tx.id,
         start_date: tx.start_date,
         end_date: tx.end_date,

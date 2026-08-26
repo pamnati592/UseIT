@@ -89,7 +89,27 @@ export default function HistoryScreen() {
 
         if (!active) return;
 
-        const toRentalRow = (t: any, otherField: 'lender' | 'renter'): RentalRow => ({
+        type RentalQueryRow = {
+          id: string;
+          status: string;
+          start_date: string;
+          end_date: string;
+          total_price: number;
+          created_at: string;
+          items: { title: string; photos: string[] | null; category: string } | null;
+          lender?: { full_name: string | null } | null;
+          renter?: { full_name: string | null } | null;
+        };
+
+        type SaleQueryRow = {
+          id: string;
+          price: number;
+          created_at: string;
+          items: { title: string; photos: string[] | null; category: string } | null;
+          buyer?: { full_name: string | null } | null;
+        };
+
+        const toRentalRow = (t: RentalQueryRow, otherField: 'lender' | 'renter'): RentalRow => ({
           kind: 'rental',
           id: t.id,
           status: t.status,
@@ -103,7 +123,7 @@ export default function HistoryScreen() {
           sortDate: t.created_at,
         });
 
-        const toSaleRow = (p: any): SaleRow => ({
+        const toSaleRow = (p: SaleQueryRow): SaleRow => ({
           kind: 'sale',
           id: p.id,
           itemTitle: p.items?.title ?? 'Item',
@@ -114,10 +134,10 @@ export default function HistoryScreen() {
           sortDate: p.created_at,
         });
 
-        setRentingRows(((rentingTx.data as any[]) ?? []).map(t => toRentalRow(t, 'lender')));
+        setRentingRows((rentingTx.data ?? []).map(t => toRentalRow(t as RentalQueryRow, 'lender')));
 
-        const lendingRentals = ((lendingTx.data as any[]) ?? []).map(t => toRentalRow(t, 'renter'));
-        const soldItems = ((sales.data as any[]) ?? []).map(toSaleRow);
+        const lendingRentals = (lendingTx.data ?? []).map(t => toRentalRow(t as RentalQueryRow, 'renter'));
+        const soldItems = (sales.data ?? []).map(p => toSaleRow(p as SaleQueryRow));
         setLendingRows(
           [...lendingRentals, ...soldItems].sort(
             (a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime()

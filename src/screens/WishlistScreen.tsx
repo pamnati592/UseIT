@@ -41,8 +41,8 @@ export default function WishlistScreen() {
       .order('created_at', { ascending: false });
 
     const fetched: Item[] = (data ?? [])
-      .map((row: any) => row.items)
-      .filter(Boolean);
+      .map(row => row.items)
+      .filter(Boolean) as Item[];
 
     setItems(fetched);
     setLoading(false);

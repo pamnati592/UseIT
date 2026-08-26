@@ -5,6 +5,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
+import type { ParamListBase } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ChevronLeft, ArrowUp, ShieldCheck, Scale } from 'lucide-react-native';
 import { supabase } from '../services/supabase';
 import { chatBus } from '../services/chatBus';
@@ -22,7 +24,7 @@ import type { ThemeColors } from '../theme/colors';
 // notification actually reaches the user instead of requiring them to
 // stumble into "Message UseIT About This" on the rental card.
 type Props = {
-  navigation: any;
+  navigation: NativeStackNavigationProp<ParamListBase>;
   route: { params: { threadId: string; title: string } };
 };
 
