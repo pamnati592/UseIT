@@ -27,7 +27,7 @@ export type ProfileStackParamList = {
   Wishlist: undefined;
   EditItem: { itemId: string };
   ItemDetail: { item: Item; openRent?: boolean; prefilledStart?: string; prefilledEnd?: string };
-  PublicProfile: { userId: string; userName: string; approveTransactionId?: string; requestSummary?: string };
+  PublicProfile: { userId: string; userName: string; approveTransactionId?: string; requestSummary?: string; conversationId?: string; itemTitle?: string };
   History: undefined;
   AdminHome: undefined;
   AdminDisputes: undefined;

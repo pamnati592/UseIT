@@ -35,7 +35,7 @@ export default function AdminUsersScreen({ navigation, route }: Props) {
 
   const load = useCallback(async (q?: string) => {
     setLoading(true);
-    const { data, error } = await supabase.rpc('admin_list_users', { p_search: q ?? null });
+    const { data, error } = await supabase.rpc('admin_list_users', { p_search: q ?? undefined });
     if (error) { Alert.alert('Error', error.message); setLoading(false); return; }
     setUsers((data as AdminUserRow[]) ?? []);
     setLoading(false);

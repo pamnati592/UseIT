@@ -11,6 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ChatsStackParamList } from '../navigation/ChatsStackNavigator';
 import { supabase } from '../services/supabase';
+import type { Database } from '../types/database';
 import { chatBus } from '../services/chatBus';
 import { insertSystemMessage as sharedInsertSystemMessage } from '../services/chatMessages';
 import { uploadImage, HANDOFF_EVIDENCE_BUCKET, disputePhotoPath } from '../services/storage';
@@ -124,7 +125,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   // An admin is UseIT — contacting "UseIT support" from their own rental as
   // a party makes no sense, so the button is hidden for them entirely.
   const { isAdmin } = useAdminMode();
-  const { conversationId, itemTitle, otherUserName, initialText, targetTransactionId, initialTab, highlightAfterTimestamp, declineTransactionId, reportIssueTransactionId } = route.params;
+  const { conversationId, itemTitle, otherUserName, initialText, targetTransactionId, initialTab, highlightAfterTimestamp, declineTransactionId, reportIssueTransactionId, approveTransactionId, rejectTransactionId } = route.params;
   const [activeTab, setActiveTab] = useState<'chat' | 'deal'>(initialTab ?? 'chat');
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -465,7 +466,8 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       .single();
     if (!conv) return;
     const field = conv.renter_id === userId ? 'renter_last_read_at' : 'lender_last_read_at';
-    await supabase.from('conversations').update({ [field]: new Date().toISOString() }).eq('id', conversationId);
+    const update: Pick<Database['public']['Tables']['conversations']['Update'], 'renter_last_read_at' | 'lender_last_read_at'> = { [field]: new Date().toISOString() };
+    await supabase.from('conversations').update(update).eq('id', conversationId);
   }
 
   async function send() {
@@ -488,7 +490,8 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       // listener (including the sender's own device) sees "unread" for a message
       // that was just sent, self-correcting a moment later as a visible flash.
       const readField = convInfo?.lender_id === currentUserId ? 'lender_last_read_at' : 'renter_last_read_at';
-      await supabase.from('conversations').update({ last_message: content, last_message_at: now, [readField]: now }).eq('id', conversationId);
+      const update: Pick<Database['public']['Tables']['conversations']['Update'], 'last_message' | 'last_message_at' | 'renter_last_read_at' | 'lender_last_read_at'> = { last_message: content, last_message_at: now, [readField]: now };
+      await supabase.from('conversations').update(update).eq('id', conversationId);
       chatBus.notify();
     }
     setSending(false);
@@ -704,6 +707,22 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     navigation.setParams({ declineTransactionId: undefined });
   }, [declineTransactionId]);
 
+  // PublicProfileScreen's "View profile" shortcut routes the approve/reject
+  // decision back here rather than updating the transaction itself, so the
+  // system-message + unread-badge side effects only ever fire from this one
+  // canonical place (SAS).
+  useEffect(() => {
+    if (!approveTransactionId) return;
+    handleApprove(approveTransactionId);
+    navigation.setParams({ approveTransactionId: undefined });
+  }, [approveTransactionId]);
+
+  useEffect(() => {
+    if (!rejectTransactionId) return;
+    handleReject(rejectTransactionId);
+    navigation.setParams({ rejectTransactionId: undefined });
+  }, [rejectTransactionId]);
+
   async function confirmDeclineAtPickup() {
     const transactionId = declineModal.transactionId;
     if (!transactionId || declineReason.trim().length < DECLINE_REASON_MIN) return;
@@ -757,8 +776,8 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       }
       const { error } = await supabase.rpc('report_issue', {
         p_tx: transactionId,
-        p_description: disputeText.trim() || null,
-        p_photo_url: photoPath,
+        p_description: disputeText.trim() || undefined,
+        p_photo_url: photoPath ?? undefined,
       });
       if (error) throw error;
 
@@ -1195,6 +1214,8 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
                             userName: otherUserName,
                             approveTransactionId: tx.id,
                             requestSummary: msg.content,
+                            conversationId,
+                            itemTitle,
                           },
                         });
                       }}

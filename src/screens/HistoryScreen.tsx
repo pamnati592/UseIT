@@ -14,7 +14,7 @@ type RoleTab = 'renting' | 'lending';
 
 // Only these three — a rejected/cancelled-before-payment request never became a
 // real rental and doesn't belong in history (spec: "completed/cancelled/disputed").
-const HISTORY_STATUSES = ['completed', 'cancelled', 'disputed'];
+const HISTORY_STATUSES = ['completed', 'cancelled', 'disputed'] as const;
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
   completed: { label: 'Completed', color: '#6b7280', bg: 'rgba(107,114,128,0.15)' },

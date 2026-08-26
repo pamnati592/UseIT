@@ -92,9 +92,9 @@ export default function HomeScreen({ navigation }: Props) {
     setLoading(true);
     async function fetchItems() {
       const { data, error } = await supabase.rpc('get_feed', {
-        p_lat: coords?.latitude ?? null,
-        p_lng: coords?.longitude ?? null,
-        p_radius_km: radiusKm >= RADIUS_MAX_KM ? null : radiusKm,
+        p_lat: coords?.latitude ?? undefined,
+        p_lng: coords?.longitude ?? undefined,
+        p_radius_km: radiusKm >= RADIUS_MAX_KM ? undefined : radiusKm,
       });
       if (cancelled) return;
       if (!error && data) {

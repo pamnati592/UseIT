@@ -93,7 +93,7 @@ export default function AdminDisputesScreen({ navigation }: Props) {
     const { error } = await supabase.rpc('admin_resolve_dispute', {
       p_transaction_id: transactionId,
       p_favor: favor,
-      p_note: notes[transactionId]?.trim() || null,
+      p_note: notes[transactionId]?.trim() || undefined,
     });
     if (error) {
       Alert.alert('Error', error.message ?? 'Could not resolve the dispute.');

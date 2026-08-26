@@ -19,6 +19,12 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
 const TODAY = new Date().toISOString().split('T')[0];
 const STAR_COLOR = '#f59e0b';
 
+// Both RPCs `returns json` in Postgres (json_build_object), so Supabase's
+// generated types can't infer their shape — these mirror the literal
+// json_build_object(...) calls in their migrations.
+type CreateRentalRequestResult = { conversation_id: string; lender_name: string };
+type CreatePurchaseResult = { conversation_id: string; purchase_id: string };
+
 type Props = NativeStackScreenProps<HomeStackParamList, 'ItemDetail'>;
 
 function datesBetween(start: string, end: string): string[] {
@@ -229,6 +235,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
         p_message:    message,
       });
       if (error) throw error;
+      const result = data as CreateRentalRequestResult;
 
       setRentModalVisible(false);
       // Signal AI Planner to tick this item as Requested
@@ -238,9 +245,9 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
       (navigation as any).getParent()?.navigate('Chats', {
         screen: 'ChatRoom',
         params: {
-          conversationId: data.conversation_id,
+          conversationId: result.conversation_id,
           itemTitle:      item.title,
-          otherUserName:  data.lender_name,
+          otherUserName:  result.lender_name,
         },
       });
     } catch (e: any) {
@@ -314,6 +321,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
 
       const { data, error } = await supabase.rpc('create_purchase', { p_item_id: item.id });
       if (error) throw error;
+      const result = data as CreatePurchaseResult;
 
       const { data: sellerProfile } = await supabase
         .from('profiles')
@@ -324,7 +332,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
       (navigation as any).getParent()?.navigate('Chats', {
         screen: 'ChatRoom',
         params: {
-          conversationId: data.conversation_id,
+          conversationId: result.conversation_id,
           itemTitle: item.title,
           otherUserName: (sellerProfile as any)?.full_name ?? 'Seller',
           initialTab: 'deal',
