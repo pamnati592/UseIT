@@ -141,7 +141,7 @@ serve(async (req) => {
       };
 
       metadata = { transaction_id, renter_id: user.id };
-      description = `SwipeAndRent: ${(tx as any).items?.title ?? 'Item rental'}`;
+      description = `UseIT: ${(tx as any).items?.title ?? 'Item rental'}`;
       isRental = true;
     } else {
       // Fetch purchase and verify the caller is the buyer
@@ -162,7 +162,7 @@ serve(async (req) => {
       }
       amount = Math.round(purchase.price * 100);
       metadata = { purchase_id, buyer_id: user.id };
-      description = `SwipeAndRent: ${(purchase as any).items?.title ?? 'Item purchase'} (purchase)`;
+      description = `UseIT: ${(purchase as any).items?.title ?? 'Item purchase'} (purchase)`;
     }
 
     // Create Stripe PaymentIntent — amount in agorot (1/100 of shekel). Attached to

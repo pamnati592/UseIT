@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="./assets/icon.png" alt="SwipeAndRent" width="110" />
+<img src="./assets/icon.png" alt="UseIT" width="110" />
 
-# SwipeAndRent
+# UseIT
 
 **Airbnb for your idle stuff — swipe to discover nearby gear, chat with the owner, and rent it securely.**
 
@@ -18,7 +18,7 @@
 
 ## Overview
 
-SwipeAndRent connects people who own equipment with people who need it — locally, securely, and without middlemen. Browse items by swiping through a location-aware feed, send a rental request, pay through an escrow-protected flow, and confirm every pickup and return with a unique QR code.
+UseIT connects people who own equipment with people who need it — locally, securely, and without middlemen. Browse items by swiping through a location-aware feed, send a rental request, pay through an escrow-protected flow, and confirm every pickup and return with a unique QR code.
 
 Built as a cross-platform mobile app (iOS + Android) using React Native and Expo, with Supabase handling auth, database, real-time messaging, and file storage.
 
@@ -61,7 +61,7 @@ Built as a cross-platform mobile app (iOS + Android) using React Native and Expo
 
 ## Project Status & Scope
 
-SwipeAndRent is a complete, working concept: the product, the technical architecture, and every core user flow — browsing, chat, AI-assisted listing, payment, QR handoff, disputes, reputation, admin moderation — are built and demonstrable end-to-end.
+UseIT is a complete, working concept: the product, the technical architecture, and every core user flow — browsing, chat, AI-assisted listing, payment, QR handoff, disputes, reputation, admin moderation — are built and demonstrable end-to-end.
 
 Turning it into an operating business is a separate step from the software, and nothing on that side is finalized yet. In particular: the escrow-style payment flow is built on Stripe Connect and works fully in Stripe's test mode, but Stripe Connect's own onboarding doesn't currently offer Israel as a supported business country — so running this as a live payment platform there would need a different payment provider, or a business entity registered elsewhere. More generally, we haven't registered a business or done the legal/compliance work an operating marketplace would need; that's deliberately out of scope for this repository.
 

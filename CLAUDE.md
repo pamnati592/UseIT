@@ -1,4 +1,4 @@
-# CLAUDE.md – Swap&Rent Project
+# CLAUDE.md – UseIT Project
 
 ## ⚠️ MANDATORY – Read Before Every Response
 **At the start of every conversation and before every answer, read the product spec file:**

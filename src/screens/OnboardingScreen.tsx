@@ -98,7 +98,7 @@ export default function OnboardingScreen({ onFinished }: { onFinished: () => voi
         {/* STEP 1 – Role */}
         {step === 1 && (
           <>
-            <Text style={styles.title}>How will you use SwipeAndRent?</Text>
+            <Text style={styles.title}>How will you use UseIT?</Text>
             <Text style={styles.subtitle}>You can change this later in your profile</Text>
 
             {ROLES.map((r) => {

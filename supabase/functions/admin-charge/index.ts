@@ -78,7 +78,7 @@ serve(async (req) => {
     } else {
       const result = await chargeOffSession(
         stripe, profile.stripe_customer_id, amountAgorot,
-        `SwipeAndRent: ${reason === 'damage' ? 'damage' : 'late-return penalty'} — ${itemTitle}`,
+        `UseIT: ${reason === 'damage' ? 'damage' : 'late-return penalty'} — ${itemTitle}`,
         { transaction_id, reason }
       );
       if (result.ok) {

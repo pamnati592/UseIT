@@ -1,4 +1,4 @@
-# AGENTS.md – Swap&Rent Project
+# AGENTS.md – UseIT Project
 
 This file used to be a full copy of the project instructions and had drifted
 out of sync with the maintained version — missing sections like the SAS /

@@ -102,7 +102,7 @@ serve(async (req) => {
     } else {
       const result = await chargeOffSession(
         stripe, profile.stripe_customer_id, amountAgorot,
-        `SwipeAndRent: late fee — ${itemTitle}`,
+        `UseIT: late fee — ${itemTitle}`,
         { transaction_id, reason: 'late_fee_daily' }
       );
       if (result.ok) {
