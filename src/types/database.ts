@@ -1142,9 +1142,11 @@ export type Database = {
           item_photo: string
           item_title: string
           lender_id: string
+          lender_is_admin: boolean
           lender_name: string
           photo_url: string
           renter_id: string
+          renter_is_admin: boolean
           renter_name: string
           reported_at: string
           reporter_id: string
@@ -1163,8 +1165,10 @@ export type Database = {
           item_title: string
           late_days: number
           lender_id: string
+          lender_is_admin: boolean
           lender_name: string
           renter_id: string
+          renter_is_admin: boolean
           renter_name: string
           start_date: string
           transaction_id: string

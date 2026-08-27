@@ -22,8 +22,10 @@ type OverdueRow = {
   daily_price: number;
   renter_id: string;
   renter_name: string;
+  renter_is_admin: boolean;
   lender_id: string;
   lender_name: string;
+  lender_is_admin: boolean;
   late_days: number;
   accrued_fee: number;
   cliff_charged: boolean;
@@ -121,20 +123,24 @@ export default function AdminOverdueScreen({ navigation }: Props) {
         </Text>
 
         <View style={styles.messageRow}>
-          <TouchableOpacity
-            style={styles.messageBtn}
-            onPress={() => messageParty(row.transaction_id, row.renter_id, row.renter_name)}
-          >
-            <ShieldCheck size={13} color={colors.primary} />
-            <Text style={styles.messageBtnText}>Message Renter</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.messageBtn}
-            onPress={() => messageParty(row.transaction_id, row.lender_id, row.lender_name)}
-          >
-            <ShieldCheck size={13} color={colors.primary} />
-            <Text style={styles.messageBtnText}>Message Lender</Text>
-          </TouchableOpacity>
+          {!row.renter_is_admin && (
+            <TouchableOpacity
+              style={styles.messageBtn}
+              onPress={() => messageParty(row.transaction_id, row.renter_id, row.renter_name)}
+            >
+              <ShieldCheck size={13} color={colors.primary} />
+              <Text style={styles.messageBtnText}>Message Renter</Text>
+            </TouchableOpacity>
+          )}
+          {!row.lender_is_admin && (
+            <TouchableOpacity
+              style={styles.messageBtn}
+              onPress={() => messageParty(row.transaction_id, row.lender_id, row.lender_name)}
+            >
+              <ShieldCheck size={13} color={colors.primary} />
+              <Text style={styles.messageBtnText}>Message Lender</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {isCliffEligible && (

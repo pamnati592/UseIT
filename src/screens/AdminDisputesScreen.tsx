@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Image, Alert, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -24,8 +24,10 @@ type DisputeRow = {
   total_price: number;
   renter_id: string;
   renter_name: string;
+  renter_is_admin: boolean;
   lender_id: string;
   lender_name: string;
+  lender_is_admin: boolean;
   dispute_id: string | null;
   description: string | null;
   photo_url: string | null;
@@ -44,13 +46,6 @@ export default function AdminDisputesScreen({ navigation }: Props) {
   // Ruling is tapped. Freely switchable between renter/lender before then;
   // nothing is sent to either party until the explicit publish action.
   const [selectedFavor, setSelectedFavor] = useState<Record<string, 'renter' | 'lender'>>({});
-  // The sole admin account is also a real test party on real transactions —
-  // "Message Renter/Lender" must hide whichever side is the admin's own
-  // account, since admin_ensure_support_thread now rejects that server-side
-  // (an admin can't have a support thread with themselves).
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  useEffect(() => { supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id ?? null)); }, []);
-
   // handoff-evidence is a private bucket — mint a short-lived signed URL per
   // photo rather than storing/displaying a raw path.
   const { data: disputes, setData: setDisputes, loading, load } = useAdminList<DisputeRow>('admin_list_disputes', {
@@ -162,7 +157,7 @@ export default function AdminDisputesScreen({ navigation }: Props) {
         )}
 
         <View style={styles.messageRow}>
-          {d.renter_id !== currentUserId && (
+          {!d.renter_is_admin && (
             <TouchableOpacity
               style={styles.messageBtn}
               onPress={() => messageParty(d.transaction_id, d.renter_id, d.renter_name)}
@@ -171,7 +166,7 @@ export default function AdminDisputesScreen({ navigation }: Props) {
               <Text style={styles.messageBtnText}>Message Renter</Text>
             </TouchableOpacity>
           )}
-          {d.lender_id !== currentUserId && (
+          {!d.lender_is_admin && (
             <TouchableOpacity
               style={styles.messageBtn}
               onPress={() => messageParty(d.transaction_id, d.lender_id, d.lender_name)}
