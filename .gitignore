@@ -33,8 +33,6 @@ yarn-error.*
 # local env files
 .env*.local
 
-# test credentials — keep passwords off git, copy testAccounts.example.ts → testAccounts.ts locally
-src/config/testAccounts.ts
 
 # typescript
 *.tsbuildinfo

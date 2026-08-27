@@ -211,7 +211,7 @@ export default function ProfileScreen() {
       }
 
       if (!email || !password) {
-        Alert.alert('Not configured', `Add credentials for "${label}" in src/config/testAccounts.ts`);
+        Alert.alert('Not configured', `Add credentials for "${label}" to EXPO_PUBLIC_TEST_ACCOUNTS_JSON in .env`);
         return;
       }
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });

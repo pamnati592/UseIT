@@ -24,7 +24,15 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -67,6 +75,12 @@
           "faceIDPermission": "UseIT uses Face ID to verify it's really you before granting full access."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "7aa82086-39e8-4bc1-950b-4654819ca49f"
+      }
+    },
+    "owner": "oriper"
   }
 }
