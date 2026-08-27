@@ -6,9 +6,14 @@
 Previous session (2026-08-26): Demo Day + code review prep planned and largely executed (Supabase generated types, `any` cleanup 55→41, cross-screen duplication extracted into `src/utils/format.ts`/`src/hooks/useAdminList.ts`, `ChatRoomScreen.tsx` cut from 1913→1567 lines, a real SAS bug fixed and verified end-to-end), a demo account created, the Google Maps key fixed, database test-profanity cleaned up, and a full rename from SwipeAndRent to **UseIT** — including the bundle identifier/scheme/slug once Ori explicitly signed off on it. See the "🔍 Code review prep" and the two rebrand sections below for the full detail.
 
 **Next suggested step, in order:**
-1. **iOS distribution is still unsolved** — no cheap way to share an install link for iPhone without a paid Apple Developer account ($99/yr) for TestFlight. If that matters for the demo, the only current option is a pre-installed loaner iPhone. Decide this and act soon if the demo date is close.
-2. **Check Supabase Dashboard → Authentication → URL Configuration** for a `swipeandrent://` entry in the redirect-URL allowlist (used by Google sign-in) — add a `useit://` counterpart if one exists. Still not checked, no MCP tool exposes it for a direct read.
-3. Everything from the 2026-08-24 session that was still pending: the Reports queue end-to-end, account deletion (careful, it's real), GDPR export's Share sheet — see "Testing owed" below for the full list, still accurate.
+1. **Check Supabase Dashboard → Authentication → URL Configuration** for a `swipeandrent://` entry in the redirect-URL allowlist (used by Google sign-in) — add a `useit://` counterpart if one exists. Still not checked, no MCP tool exposes it for a direct read.
+2. Everything from the 2026-08-24 session that was still pending: the Reports queue end-to-end, account deletion (careful, it's real), GDPR export's Share sheet — see "Testing owed" below for the full list, still accurate.
+
+## ⛔ DECIDED (2026-08-27) — no paid Apple Developer account, iOS distribution/Sign-in dropped
+Ori doesn't want to spend money right now — a recurring $99/yr charge is a hard no. This means, until that changes:
+- **TestFlight / any shareable iOS install link is off the table.** The only way to demo on iPhone is a loaner device pre-installed via USB (already working, $0, see the rebuild recipe above).
+- **Sign in with Apple stays non-functional** — the client code is already built and harmless to leave in place (see 2026-08-24 entry below), just can't be wired up server-side without the paid account. Not worth removing the code for this.
+- Don't spend more session time chasing Apple-account-gated work until Ori says this has changed.
 
 ## ✅ NEW (2026-08-27) — Android APK distribution set up and working
 Per the 2026-08-26 session's own recommendation ("build the Android APK now, zero blockers"), actually did it this session:
@@ -100,8 +105,8 @@ Everything from the 2026-08-19 gap analysis, plus R/AA/AB from the old backlog l
 
 ## ⚠️ Needs Ori's action before these actually work
 - **Login lockout**: Dashboard → Authentication → Hooks → Password Verification Attempt → select `public.hook_password_verification_attempt`. One click, not done yet.
-- **Sign in with Apple**: needs a paid Apple Developer Program account ($99/yr) — the free personal team can't enable the capability at all. Not buildable from here.
-- **Google Cloud hardening** (see backlog L below) — still outstanding, unrelated to this session.
+- **Sign in with Apple**: needs a paid Apple Developer Program account ($99/yr) — **decided against, 2026-08-27**, see the ⛔ section above. Not happening for now.
+- **Google Cloud hardening** (see backlog L below) — still outstanding. Clarified 2026-08-27: the Hard Quota and Budget Alert are both free to set (the alert just emails you at spend thresholds, it doesn't charge $1) — only "activate full billing" is a real recurring-charge risk, and Ori doesn't want that. Recommendation: set the free quota + alert, skip activating full billing, stay on the Free Trial.
 
 ## ⚠️ Testing owed (nothing below confirmed on device except where noted)
 - Reports queue end-to-end: report a user from `PublicProfileScreen` → confirm it shows in Admin Console → Reports → Dismiss / Manage User navigates to `AdminUsersScreen` with the name pre-filled.
@@ -207,7 +212,7 @@ A professional review of this codebase is coming. The full plan (see `/Users/per
 - Root cause found and fixed 2026-08-11: `Location.Accuracy.Balanced` (~100m error) was being compared against a 50m threshold. Both QR screens now use `Location.Accuracy.High` (~10m). **Still open:** consider refusing a handoff when reported `accuracy` is worse than ~30m, or widening the effective limit by the two reported accuracy radii instead of a flat 50m. Don't tighten the 50m constant without this — it's the only thing absorbing normal GPS error.
 
 ### L. Google Cloud account hardening (operational, not code)
-- Before Free Trial expiry: Hard Quotas (1000/day) on Places + Geocoding APIs, a $1 Budget Alert (50/90/100%), activate full billing only after both are in place.
+- Before Free Trial expiry: Hard Quotas (1000/day) on Places + Geocoding APIs, a $1 Budget Alert (50/90/100%) — both free to configure, no charge either way. **Do not** activate full billing (Ori's call, 2026-08-27) — that's the only part of this with a real recurring-cost risk. Stay on the Free Trial.
 
 ### New: extend biometric read-only enforcement beyond the two core actions
 - Currently gated: Add Item submit, rental request, Buy. Not gated: chat messages, ratings, wishlist, reviews, reports, and everything else that writes data. No existing single choke point for all writes — would mean touching most screens individually. Not urgent, but a real gap between what the spec implies ("read-only mode") and what's actually enforced.
