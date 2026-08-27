@@ -108,13 +108,12 @@ export default function AddItemScreen() {
   // Backlog S: suggest title/category/description/daily_price from the item's
   // own cover photo — the user still reviews and can edit every field before
   // saving through the normal Save path below, which is untouched by this.
-  async function handleAutoFill() {
-    if (itemPhotos.length === 0 || analyzing) return;
+  async function analyzePhoto(asset: PhotoAsset) {
+    if (analyzing) return;
     setAnalyzing(true);
     try {
-      const cover = itemPhotos[0];
       const { data, error } = await supabase.functions.invoke('analyze-item-photo', {
-        body: { image_base64: cover.base64, mime_type: cover.mimeType },
+        body: { image_base64: asset.base64, mime_type: asset.mimeType },
       });
       if (error) {
         // supabase-js's own error.message is just "Edge Function returned a
@@ -134,6 +133,18 @@ export default function AddItemScreen() {
     } finally {
       setAnalyzing(false);
     }
+  }
+
+  // Top-of-screen shortcut: goes straight to the camera instead of requiring
+  // the user to first scroll to Item Photos, add one, then notice the
+  // auto-fill button down there — that flow buried the feature enough that
+  // someone unfamiliar with it could miss it entirely.
+  async function handleCompleteWithAI() {
+    if (analyzing) return;
+    const asset = await pickFromCamera();
+    if (!asset) return;
+    setItemPhotos((prev) => [asset, ...prev].slice(0, MAX_ITEM_PHOTOS));
+    await analyzePhoto(asset);
   }
 
   // Converts base64 → Uint8Array and uploads via Supabase SDK.
@@ -234,6 +245,13 @@ export default function AddItemScreen() {
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <Text style={styles.heading}>List an Item</Text>
 
+          <TouchableOpacity style={styles.completeWithAiBtn} onPress={handleCompleteWithAI} disabled={analyzing || loading !== null}>
+            {analyzing
+              ? <ActivityIndicator color={colors.btnText} />
+              : <><Sparkles size={18} color={colors.btnText} /><Text style={styles.completeWithAiBtnText}>Complete with AI</Text></>}
+          </TouchableOpacity>
+          <Text style={styles.completeWithAiHint}>Take a photo and we&apos;ll suggest the title, category, description, and price.</Text>
+
           <Text style={styles.label}>Title *</Text>
           <TextInput style={styles.input} placeholder="e.g. Canon EOS R5" placeholderTextColor={colors.textFaint} value={title} onChangeText={setTitle} />
 
@@ -319,14 +337,6 @@ export default function AddItemScreen() {
             </ScrollView>
           )}
 
-          {itemPhotos.length > 0 && (
-            <TouchableOpacity style={styles.autoFillBtn} onPress={handleAutoFill} disabled={analyzing || loading !== null}>
-              {analyzing
-                ? <ActivityIndicator color={colors.primary} size="small" />
-                : <><Sparkles size={16} color={colors.primary} /><Text style={styles.autoFillBtnText}>Auto-fill with AI</Text></>}
-            </TouchableOpacity>
-          )}
-
           {/* ── Verification Photo ──────────────────────────────── */}
           <Text style={styles.sectionHeading}>Verification Photo</Text>
           <Text style={styles.sectionHint}>Camera only. Used for admin verification — not shown to other users.</Text>
@@ -356,6 +366,12 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   scroll: { padding: 24, gap: 8, paddingBottom: 48 },
   heading: { fontSize: 22, fontWeight: 'bold', color: colors.text, marginBottom: 16 },
+  completeWithAiBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    height: 52, borderRadius: 10, backgroundColor: colors.primary,
+  },
+  completeWithAiBtnText: { color: colors.btnText, fontSize: 16, fontWeight: '700' },
+  completeWithAiHint: { fontSize: 12, color: colors.textFaint, marginTop: 6, marginBottom: 12, textAlign: 'center' },
   label: { fontSize: 13, color: colors.textMuted, marginTop: 12, marginBottom: 4 },
   sectionHeading: { fontSize: 15, fontWeight: '600', color: colors.text, marginTop: 24, marginBottom: 2 },
   sectionHint: { fontSize: 12, color: colors.textFaint, marginBottom: 8 },
@@ -381,11 +397,6 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   thumbRemoveText: { color: colors.text, fontSize: 10, fontWeight: '700' },
   thumbMainBadge: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(255,255,255,0.85)', alignItems: 'center' },
   thumbMainBadgeText: { fontSize: 10, fontWeight: '700', color: colors.btnText },
-  autoFillBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    height: 44, marginTop: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.primary,
-  },
-  autoFillBtnText: { color: colors.primary, fontSize: 14, fontWeight: '600' },
   cameraButton: { height: 48, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   cameraButtonText: { color: colors.text, fontSize: 15, fontWeight: '600' },
   verificationPreview: { width: '100%', height: 160, borderRadius: 8, marginTop: 8, borderWidth: 1, borderColor: colors.border },
