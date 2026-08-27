@@ -170,8 +170,8 @@ A professional review of this codebase is coming. The full plan (see `/Users/per
 ### New: extend biometric read-only enforcement beyond the two core actions
 - Currently gated: Add Item submit, rental request, Buy. Not gated: chat messages, ratings, wishlist, reviews, reports, and everything else that writes data. No existing single choke point for all writes — would mean touching most screens individually. Not urgent, but a real gap between what the spec implies ("read-only mode") and what's actually enforced.
 
-### New: `AdminOverdueScreen`/`AdminDisputesScreen` duplicate `messageParty`
-- Noticed in passing, not fixed: identical client-side function copy-pasted in both screens (both correctly delegate to the shared `admin_ensure_support_thread` RPC, so no behavioral bug — just avoidable duplication).
+### ✅ `AdminOverdueScreen`/`AdminDisputesScreen` duplicate `messageParty` — fixed (2026-08-27)
+- Extracted into `src/hooks/useMessageParty.ts`, parameterized by the title suffix ("Overdue Rental" vs "Dispute Support"). Both screens now call `useMessageParty(navigation, '...')` instead of carrying their own copy. `tsc`/lint clean. Not yet exercised on-device (no device available this session) — low risk, logic moved verbatim.
 
 ---
 

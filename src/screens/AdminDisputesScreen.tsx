@@ -6,6 +6,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { supabase } from '../services/supabase';
 import { useAdminList } from '../hooks/useAdminList';
+import { useMessageParty } from '../hooks/useMessageParty';
 import { signedUrlFor, HANDOFF_EVIDENCE_BUCKET } from '../services/storage';
 import { formatDateRange, formatPrice } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
@@ -126,18 +127,7 @@ export default function AdminDisputesScreen({ navigation }: Props) {
     setResolvingId(null);
   }
 
-  async function messageParty(transactionId: string, userId: string, label: string) {
-    try {
-      const { data: threadId, error } = await supabase.rpc('admin_ensure_support_thread', {
-        p_transaction_id: transactionId,
-        p_user_id: userId,
-      });
-      if (error) throw error;
-      navigation.navigate('SupportThread', { threadId: threadId as string, title: `${label} · Dispute Support` });
-    } catch (e: any) {
-      Alert.alert('Error', e.message ?? 'Could not open support chat.');
-    }
-  }
+  const messageParty = useMessageParty(navigation, 'Dispute Support');
 
   function renderItem({ item: d }: { item: DisputeRow }) {
     const resolving = resolvingId === d.transaction_id;

@@ -6,6 +6,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 import { supabase } from '../services/supabase';
 import { useAdminList } from '../hooks/useAdminList';
+import { useMessageParty } from '../hooks/useMessageParty';
 import { formatShortDate, formatPrice } from '../utils/format';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
@@ -45,18 +46,7 @@ export default function AdminOverdueScreen({ navigation }: Props) {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  async function messageParty(transactionId: string, userId: string, label: string) {
-    try {
-      const { data: threadId, error } = await supabase.rpc('admin_ensure_support_thread', {
-        p_transaction_id: transactionId,
-        p_user_id: userId,
-      });
-      if (error) throw error;
-      navigation.navigate('SupportThread', { threadId: threadId as string, title: `${label} · Overdue Rental` });
-    } catch (e: any) {
-      Alert.alert('Error', e.message ?? 'Could not open support chat.');
-    }
-  }
+  const messageParty = useMessageParty(navigation, 'Overdue Rental');
 
   const formatDate = formatShortDate;
 
