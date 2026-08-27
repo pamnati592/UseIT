@@ -6,8 +6,10 @@
 Previous session (2026-08-26): Demo Day + code review prep planned and largely executed (Supabase generated types, `any` cleanup 55→41, cross-screen duplication extracted into `src/utils/format.ts`/`src/hooks/useAdminList.ts`, `ChatRoomScreen.tsx` cut from 1913→1567 lines, a real SAS bug fixed and verified end-to-end), a demo account created, the Google Maps key fixed, database test-profanity cleaned up, and a full rename from SwipeAndRent to **UseIT** — including the bundle identifier/scheme/slug once Ori explicitly signed off on it. See the "🔍 Code review prep" and the two rebrand sections below for the full detail.
 
 **Next suggested step, in order:**
-1. **Check Supabase Dashboard → Authentication → URL Configuration** for a `swipeandrent://` entry in the redirect-URL allowlist (used by Google sign-in) — add a `useit://` counterpart if one exists. Still not checked, no MCP tool exposes it for a direct read.
-2. Everything from the 2026-08-24 session that was still pending: the Reports queue end-to-end, account deletion (careful, it's real), GDPR export's Share sheet — see "Testing owed" below for the full list, still accurate.
+1. Everything from the 2026-08-24 session that was still pending: the Reports queue end-to-end, account deletion (careful, it's real), GDPR export's Share sheet — see "Testing owed" below for the full list, still accurate.
+
+## ✅ RESOLVED (2026-08-27) — Supabase Auth redirect URL
+Checked Dashboard → Authentication → URL Configuration: `swipeandrent://` was indeed in the Redirect URLs allowlist (3 entries total, alongside two `exp://localhost` dev entries). Added `useit://` as a new entry, confirmed by Ori. Old `swipeandrent://` entry left in place for now — harmless, optional cleanup later.
 
 ## ⛔ DECIDED (2026-08-27) — no paid Apple Developer account, iOS distribution/Sign-in dropped
 Ori doesn't want to spend money right now — a recurring $99/yr charge is a hard no. This means, until that changes:
