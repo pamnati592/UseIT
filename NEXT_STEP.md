@@ -1,13 +1,37 @@
 # Next Suggested Step — For Nati 👋
 
-## Where things stand (2026-08-26 end of session)
-Another huge session, all pushed to `main` (which — heads up — is now `github.com/pamnati592/UseIT`, not `SwipeAndRent`): Demo Day + code review prep planned and largely executed (Supabase generated types, `any` cleanup 55→41, cross-screen duplication extracted into `src/utils/format.ts`/`src/hooks/useAdminList.ts`, `ChatRoomScreen.tsx` cut from 1913→1567 lines, a real SAS bug fixed and verified end-to-end), a demo account created, the Google Maps key fixed, database test-profanity cleaned up, and a full rename from SwipeAndRent to **UseIT** — including the risky part (bundle identifier, scheme, slug) once Ori explicitly signed off on it. See the "🔍 Code review prep" and the two rebrand sections below for the full detail — this paragraph is just the index.
+## Where things stand (2026-08-27 end of session)
+**Native rebuild done on both devices — see the new section right below for what it actually took.** Also this session: duplicate `messageParty` extracted into `src/hooks/useMessageParty.ts`; a real bug fixed and shipped — `AdminOverdueScreen`/`AdminDisputesScreen`'s "Message Renter/Lender" buttons dead-ended in `admin_ensure_support_thread`'s "cannot open a support thread with another admin" error whenever that party happened to be an admin (caught live testing on the Galaxy), fixed by exposing `renter_is_admin`/`lender_is_admin` from `admin_list_overdue_rentals`/`admin_list_disputes` and hiding the button client-side.
+
+Previous session (2026-08-26): Demo Day + code review prep planned and largely executed (Supabase generated types, `any` cleanup 55→41, cross-screen duplication extracted into `src/utils/format.ts`/`src/hooks/useAdminList.ts`, `ChatRoomScreen.tsx` cut from 1913→1567 lines, a real SAS bug fixed and verified end-to-end), a demo account created, the Google Maps key fixed, database test-profanity cleaned up, and a full rename from SwipeAndRent to **UseIT** — including the bundle identifier/scheme/slug once Ori explicitly signed off on it. See the "🔍 Code review prep" and the two rebrand sections below for the full detail.
 
 **Next suggested step, in order:**
-1. **Native rebuild on both devices** — the bundle identifier changed (`com.swipeandrentapp` → `com.useitapp`), so both the iPhone and Galaxy currently have an orphaned old app installed, not an upgradable one. See the rebrand section below for exact steps (uninstall-then-reinstall on Android; fresh provisioning-trust on iOS).
-2. **Quick on-device eyeball of the last terminology batch** — not verified live this session since the Galaxy disconnected mid-batch. Three easy spots: Item Detail's wishlist heart (should say "Wishlisted" once tapped), the Get Help → "Report a Problem" flow, Admin Items' "Decline" button.
-3. **Check Supabase Dashboard → Authentication → URL Configuration** for a `swipeandrent://` entry in the redirect-URL allowlist (used by Google sign-in) — add a `useit://` counterpart if one exists. Not checked this session, no MCP tool exposed it for a direct read.
-4. Everything from the 2026-08-24 session that was still pending: the Reports queue end-to-end, account deletion (careful, it's real), GDPR export's Share sheet — see "Testing owed" below for the full list, still accurate.
+1. **Quick on-device eyeball of the last terminology batch** — not verified live yet. Three easy spots: Item Detail's wishlist heart (should say "Wishlisted" once tapped), the Get Help → "Report a Problem" flow, Admin Items' "Decline" button.
+2. **Check Supabase Dashboard → Authentication → URL Configuration** for a `swipeandrent://` entry in the redirect-URL allowlist (used by Google sign-in) — add a `useit://` counterpart if one exists. Still not checked, no MCP tool exposes it for a direct read.
+3. Everything from the 2026-08-24 session that was still pending: the Reports queue end-to-end, account deletion (careful, it's real), GDPR export's Share sheet — see "Testing owed" below for the full list, still accurate.
+
+## ✅ NEW (2026-08-27) — Native rebuild done, and it needed a second identifier change
+Both devices are now running the real `com.useitapp.app` build — but getting there took more than the routine 7-day-cert dance NEXT_STEP.md expected, because `com.useitapp` (the identifier picked 2026-08-26) turned out to be **already registered to some other Apple Developer account** — Bundle IDs are globally unique across all of Apple, not just per-team, and Xcode's "identifier not available" error gives no way to see who owns it. The free/personal team tier also can't view Certificates/Identifiers/Profiles on the web portal at all ("Access Unavailable" — that page needs a paid Program membership), so there was no way to investigate further. Ori confirmed switching to a different identifier rather than chasing it.
+
+- **New final identifiers**: `ios.bundleIdentifier`/`android.package` → **`com.useitapp.app`** (`slug`/`scheme` stay `useit` — those aren't globally-unique Apple namespaces, so they were never the problem). Stripe `merchantIdentifier` in `App.tsx` updated to match (`merchant.com.useitapp.app`) — still cosmetic/unused per the 2026-08-26 note, only matters if Apple Pay is ever activated.
+- **Two more build blockers found and fixed, both worth knowing for the next `expo prebuild --clean`**:
+  1. `expo-apple-authentication`'s config plugin adds the `com.apple.developer.applesignin` entitlement **unconditionally on every prebuild**, regardless of app.json's `usesAppleSignIn` flag (confirmed by reading the plugin source — that flag doesn't gate it at all). A free/personal team cannot provision any App ID with this entitlement ("Personal development teams... do not support the Sign In with Apple capability") — this blocked the build outright, not just Apple Sign In itself. Fix each time: `/usr/libexec/PlistBuddy -c "Delete :com.apple.developer.applesignin" ios/UseIT/UseIT.entitlements` — same treatment as the existing `aps-environment` strip, now there are two entitlements to remove post-prebuild, not one. (Note: `plutil -remove` doesn't work here — it treats dots in the key name as a nested path separator and fails with "No value to remove"; use `PlistBuddy` with a `:`-prefixed key instead.)
+  2. `expo prebuild --clean` does **not** preserve `DEVELOPMENT_TEAM` in `project.pbxproj` — it was only present before because an earlier plain `xcodebuild` run had auto-populated it as a side effect of automatic-signing resolution. After a clean prebuild, `xcodebuild` fails with "Signing for 'UseIT' requires a development team" until you either open Xcode once and pick the team via the GUI, or pass it explicitly on the CLI: `xcodebuild ... DEVELOPMENT_TEAM=C2DG54HCLY` (that's Ori's personal team ID, "אורי פרלמן").
+- **Full working CLI recipe** (no Xcode GUI needed), for next time:
+  ```
+  npx expo prebuild --clean
+  /usr/libexec/PlistBuddy -c "Delete :aps-environment" ios/UseIT/UseIT.entitlements
+  /usr/libexec/PlistBuddy -c "Delete :com.apple.developer.applesignin" ios/UseIT/UseIT.entitlements
+  cd ios && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 pod install && cd ..
+  xcodebuild -workspace ios/UseIT.xcworkspace -configuration Debug -scheme UseIT \
+    -destination id=<UDID> -allowProvisioningUpdates DEVELOPMENT_TEAM=C2DG54HCLY
+  xcrun devicectl device install app --device <UDID> <path to UseIT.app in DerivedData>
+  xcrun devicectl device process launch --terminate-existing --device <UDID> com.useitapp.app
+  ```
+  (Android side was simpler — `npx expo run:android --device SM_G781B` after `adb uninstall com.swipeandrentapp` worked first try, no equivalent gotchas.)
+- **CocoaPods locale bug** (unrelated to the identifier issue, hit on every `pod install` this session): `pod install` crashes with a Ruby `UnicodeNormalize` error unless `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8` is set — worth adding to `~/.profile` permanently per CocoaPods' own warning, hasn't been done yet.
+- **Still needs the on-device provisioning-trust step** after any future rebuild — Settings → General → VPN & Device Management → Trust — same as always, can't be automated.
+- **Not re-checked yet**: Face ID / biometric gate and Sign in with Apple's native sign-in sheet specifically under the new identifier (should be unaffected since nothing about the entitlement content changed, just the App ID string, but not explicitly re-verified).
 
 ## ✅ NEW (2026-08-26) — DB profanity cleanup + full SwipeAndRent → UseIT rebrand
 

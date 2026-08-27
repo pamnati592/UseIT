@@ -22,7 +22,7 @@ export default function App() {
       <ThemeProvider>
         <StripeProvider
           publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? ''}
-          merchantIdentifier="merchant.com.useitapp"
+          merchantIdentifier="merchant.com.useitapp.app"
         >
           <View style={{ flex: 1 }}>
             <RootNavigator />

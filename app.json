@@ -14,11 +14,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.useitapp",
+      "bundleIdentifier": "com.useitapp.app",
       "usesAppleSignIn": true
     },
     "android": {
-      "package": "com.useitapp",
+      "package": "com.useitapp.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
