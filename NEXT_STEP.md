@@ -6,9 +6,14 @@
 Previous session (2026-08-26): Demo Day + code review prep planned and largely executed (Supabase generated types, `any` cleanup 55→41, cross-screen duplication extracted into `src/utils/format.ts`/`src/hooks/useAdminList.ts`, `ChatRoomScreen.tsx` cut from 1913→1567 lines, a real SAS bug fixed and verified end-to-end), a demo account created, the Google Maps key fixed, database test-profanity cleaned up, and a full rename from SwipeAndRent to **UseIT** — including the bundle identifier/scheme/slug once Ori explicitly signed off on it. See the "🔍 Code review prep" and the two rebrand sections below for the full detail.
 
 **Next suggested step, in order:**
-1. **Quick on-device eyeball of the last terminology batch** — not verified live yet. Three easy spots: Item Detail's wishlist heart (should say "Wishlisted" once tapped), the Get Help → "Report a Problem" flow, Admin Items' "Decline" button.
-2. **Check Supabase Dashboard → Authentication → URL Configuration** for a `swipeandrent://` entry in the redirect-URL allowlist (used by Google sign-in) — add a `useit://` counterpart if one exists. Still not checked, no MCP tool exposes it for a direct read.
-3. Everything from the 2026-08-24 session that was still pending: the Reports queue end-to-end, account deletion (careful, it's real), GDPR export's Share sheet — see "Testing owed" below for the full list, still accurate.
+1. **Check Supabase Dashboard → Authentication → URL Configuration** for a `swipeandrent://` entry in the redirect-URL allowlist (used by Google sign-in) — add a `useit://` counterpart if one exists. Still not checked, no MCP tool exposes it for a direct read.
+2. Everything from the 2026-08-24 session that was still pending: the Reports queue end-to-end, account deletion (careful, it's real), GDPR export's Share sheet — see "Testing owed" below for the full list, still accurate.
+
+## ✅ Terminology batch — verified live on the Galaxy (2026-08-27)
+All 3 spots confirmed correct, no bugs found:
+- **Item Detail wishlist heart** — tapping "Wishlist" correctly flips to "Wishlisted" with a filled red heart.
+- **Get Help → Report a Problem** — the modal reads "Get Help" → "Message UseIT" / "Report a Problem →", and correctly leads into the "UseIT Arbitration" disclaimer (did not submit an actual dispute — that would've filed a real one against Ori's completed Polaroid rental).
+- **Admin Items Decline button** — no pending listings on-device to screenshot live, so confirmed via source instead: `AdminItemsScreen.tsx:149` renders "Decline" / "Confirm Decline" as intended; internal identifiers (`rejectingId` etc.) correctly left untouched (copy-only fix).
 
 ## ✅ NEW (2026-08-27) — Native rebuild done, and it needed a second identifier change
 Both devices are now running the real `com.useitapp.app` build — but getting there took more than the routine 7-day-cert dance NEXT_STEP.md expected, because `com.useitapp` (the identifier picked 2026-08-26) turned out to be **already registered to some other Apple Developer account** — Bundle IDs are globally unique across all of Apple, not just per-team, and Xcode's "identifier not available" error gives no way to see who owns it. The free/personal team tier also can't view Certificates/Identifiers/Profiles on the web portal at all ("Access Unavailable" — that page needs a paid Program membership), so there was no way to investigate further. Ori confirmed switching to a different identifier rather than chasing it.
