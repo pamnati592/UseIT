@@ -2,8 +2,9 @@ import { useState, useEffect, useMemo} from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   Image, ActivityIndicator, Modal, Alert, TextInput,
+  KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { HomeStackParamList } from '../navigation/HomeStackNavigator';
 import type { Item } from '../types/item';
@@ -11,7 +12,8 @@ import { supabase } from '../services/supabase';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
-import { ChevronLeft, ChevronRight, MapPin, Check, X, TriangleAlert, Flag } from 'lucide-react-native';
+import { OverflowMenu } from '../components/OverflowMenu';
+import { ChevronLeft, ChevronRight, MapPin, Check, X, Flag } from 'lucide-react-native';
 import { formatPrice } from '../utils/format';
 
 const REPORT_REASONS = ['Harassment', 'Scam or fraud', 'Inappropriate content', 'Misleading listings', 'Other'];
@@ -21,7 +23,8 @@ type Props = NativeStackScreenProps<HomeStackParamList, 'PublicProfile'>;
 export default function PublicProfileScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { userId, userName, approveTransactionId, requestSummary, conversationId, itemTitle } = route.params;
+  const insets = useSafeAreaInsets();
+  const { userId, userName, approveTransactionId, requestSummary, conversationId, itemTitle, autoOpenReport, reportContextItemId } = route.params;
   const [decideLoading, setDecideLoading] = useState(false);
   const [decided, setDecided] = useState<'approved' | 'declined' | null>(null);
 
@@ -54,11 +57,13 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
   const [renterScore, setRenterScore] = useState<number | null>(null);
   const [lenderReviewCount, setLenderReviewCount] = useState(0);
   const [renterReviewCount, setRenterReviewCount] = useState(0);
-  const [lenderCancellations, setLenderCancellations] = useState(0);
   const [avatarUrl, setAvatarUrl]   = useState<string | null>(null);
   const [loading, setLoading]       = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [reportModalVisible, setReportModalVisible] = useState(false);
+  // Chat and Item Detail's "Report" shortcuts navigate here with
+  // autoOpenReport rather than duplicating the report UI/logic (SAS) — this
+  // is still the one canonical place a report actually gets filed.
+  const [reportModalVisible, setReportModalVisible] = useState(!!autoOpenReport);
   const [reportReason, setReportReason] = useState<string | null>(null);
   const [reportDescription, setReportDescription] = useState('');
   const [reportSubmitting, setReportSubmitting] = useState(false);
@@ -74,6 +79,8 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
       p_reported_user_id: userId,
       p_reason: reportReason,
       p_description: reportDescription.trim() || undefined,
+      p_conversation_id: conversationId,
+      p_item_id: reportContextItemId,
     });
     setReportSubmitting(false);
     if (error) { Alert.alert('Error', error.message); return; }
@@ -86,7 +93,7 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
   useEffect(() => {
     async function load() {
       const [profileRes, itemsRes, lenderReviewsRes, renterReviewsRes] = await Promise.all([
-        supabase.from('profiles').select('city, lender_score, renter_score, lender_cancellations, avatar_url').eq('id', userId).single(),
+        supabase.from('profiles').select('city, lender_score, renter_score, avatar_url').eq('id', userId).single(),
         supabase
           .from('items')
           .select('id, owner_id, title, description, daily_price, sale_price, category, city, photos')
@@ -107,7 +114,6 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
         setCity((profileRes.data as any).city ?? null);
         setLenderScore((profileRes.data as any).lender_score ?? null);
         setRenterScore((profileRes.data as any).renter_score ?? null);
-        setLenderCancellations((profileRes.data as any).lender_cancellations ?? 0);
         setAvatarUrl((profileRes.data as any).avatar_url ?? null);
       }
       if (itemsRes.data) setItems(itemsRes.data as Item[]);
@@ -122,10 +128,6 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
     if (score === null || score === 0) return '—';
     return score.toFixed(1);
   }
-
-  // Threshold is a first pass, not a tuned figure — worth revisiting once
-  // there's real usage data on what a normal cancellation count looks like.
-  const LENDER_CANCELLATION_WARNING_THRESHOLD = 3;
 
   function renderItem({ item }: { item: Item }) {
     const cover = item.photos?.find(Boolean);
@@ -168,11 +170,11 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
               <TouchableOpacity style={styles.topRowBtn} onPress={() => navigation.canGoBack() ? navigation.goBack() : (navigation as any).getParent()?.navigate('HomeStack')}>
                 <ChevronLeft size={26} color={colors.text} />
               </TouchableOpacity>
-              {currentUserId && userId !== currentUserId && (
-                <TouchableOpacity style={styles.topRowBtn} onPress={() => setReportModalVisible(true)}>
-                  <Flag size={20} color={colors.textMuted} />
-                </TouchableOpacity>
-              )}
+              <OverflowMenu
+                items={currentUserId && userId !== currentUserId ? [
+                  { key: 'report', label: 'Report user', icon: Flag, onPress: () => setReportModalVisible(true), destructive: true },
+                ] : []}
+              />
             </View>
 
             <View style={styles.avatarSection}>
@@ -214,15 +216,6 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
                 </Text>
               </TouchableOpacity>
             </View>
-
-            {lenderCancellations >= LENDER_CANCELLATION_WARNING_THRESHOLD && (
-              <View style={styles.cancellationWarning}>
-                <TriangleAlert size={14} color={colors.danger} />
-                <Text style={styles.cancellationWarningText}>
-                  This lender has cancelled {lenderCancellations} confirmed rentals
-                </Text>
-              </View>
-            )}
 
             {/* Pending rental request — decide directly from the profile */}
             {approveTransactionId && (
@@ -274,42 +267,52 @@ export default function PublicProfileScreen({ navigation, route }: Props) {
       />
 
       <Modal visible={reportModalVisible} transparent animationType="slide" onRequestClose={() => setReportModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Report {userName}</Text>
-            <View style={styles.reasonList}>
-              {REPORT_REASONS.map((reason) => (
-                <TouchableOpacity
-                  key={reason}
-                  style={[styles.reasonRow, reportReason === reason && styles.reasonRowSelected]}
-                  onPress={() => setReportReason(reason)}
-                >
-                  <Text style={[styles.reasonText, reportReason === reason && styles.reasonTextSelected]}>{reason}</Text>
-                </TouchableOpacity>
-              ))}
+        {/* The details field is multiline — without keyboard handling, the
+            sheet sits under the keyboard on iOS with no way to dismiss it
+            (Android happens to dismiss it via the hardware back button,
+            which masked this until tested on iOS). Tapping the backdrop
+            above the sheet cancels, same as the Cancel link — the sheet
+            itself is a separate TouchableWithoutFeedback so a tap on it
+            just dismisses the keyboard instead. */}
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setReportModalVisible(false)} />
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+            <View style={[styles.modalSheet, { paddingBottom: 20 + insets.bottom }]}>
+              <Text style={styles.modalTitle}>Report {userName}</Text>
+              <View style={styles.reasonList}>
+                {REPORT_REASONS.map((reason) => (
+                  <TouchableOpacity
+                    key={reason}
+                    style={[styles.reasonRow, reportReason === reason && styles.reasonRowSelected]}
+                    onPress={() => setReportReason(reason)}
+                  >
+                    <Text style={[styles.reasonText, reportReason === reason && styles.reasonTextSelected]}>{reason}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TextInput
+                style={[styles.reportInput, { color: colors.text, borderColor: colors.border }]}
+                placeholder="Add details (optional)"
+                placeholderTextColor={colors.textMuted}
+                value={reportDescription}
+                onChangeText={setReportDescription}
+                multiline
+              />
+              <TouchableOpacity
+                style={[styles.modalPrimaryBtn, (!reportReason || reportSubmitting) && styles.btnDisabled]}
+                onPress={submitReport}
+                disabled={!reportReason || reportSubmitting}
+              >
+                {reportSubmitting
+                  ? <ActivityIndicator color={colors.btnText} />
+                  : <Text style={styles.modalPrimaryBtnText}>Submit Report</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setReportModalVisible(false)} style={styles.modalCancelLink}>
+                <Text style={styles.modalCancelLinkText}>Cancel</Text>
+              </TouchableOpacity>
             </View>
-            <TextInput
-              style={[styles.reportInput, { color: colors.text, borderColor: colors.border }]}
-              placeholder="Add details (optional)"
-              placeholderTextColor={colors.textMuted}
-              value={reportDescription}
-              onChangeText={setReportDescription}
-              multiline
-            />
-            <TouchableOpacity
-              style={[styles.modalPrimaryBtn, (!reportReason || reportSubmitting) && styles.btnDisabled]}
-              onPress={submitReport}
-              disabled={!reportReason || reportSubmitting}
-            >
-              {reportSubmitting
-                ? <ActivityIndicator color={colors.btnText} />
-                : <Text style={styles.modalPrimaryBtnText}>Submit Report</Text>}
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setReportModalVisible(false)} style={styles.modalCancelLink}>
-              <Text style={styles.modalCancelLinkText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -373,12 +376,6 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   scoreLabel: { fontSize: 12, color: colors.textFaint, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 },
   reviewCount: { fontSize: 11, color: colors.textFaint },
   scoreDivider: { width: 1, height: 36, backgroundColor: colors.card },
-  cancellationWarning: {
-    flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'center',
-    backgroundColor: 'rgba(239,68,68,0.12)', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 6, marginTop: 10,
-  },
-  cancellationWarningText: { fontSize: 12, color: colors.danger, fontWeight: '600' },
 
   sectionTitle: {
     fontSize: 11, fontWeight: '600', color: colors.textFaint,
@@ -408,7 +405,8 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   emptyText: { fontSize: 15, color: colors.textFaint },
 
   modalOverlay: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' },
-  modalSheet: { backgroundColor: colors.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, gap: 12 },
+  modalBackdrop: { flex: 1 },
+  modalSheet: { backgroundColor: colors.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 40, gap: 12 },
   modalTitle: { fontSize: 18, fontWeight: '700', color: colors.text, textAlign: 'center' },
   reasonList: { gap: 8 },
   reasonRow: { paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },

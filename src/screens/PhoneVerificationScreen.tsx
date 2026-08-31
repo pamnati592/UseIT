@@ -19,8 +19,16 @@ export default function PhoneVerificationScreen({ onVerified }: { onVerified: ()
 
   async function sendCode() {
     if (!phone.trim()) return;
-    // DEV bypass: skip real SMS, go straight to OTP entry
-    setStep('otp');
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({ phone: phone.trim() });
+      if (error) throw error;
+      setStep('otp');
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Could not send verification code.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function verifyCode() {
@@ -29,8 +37,10 @@ export default function PhoneVerificationScreen({ onVerified }: { onVerified: ()
     try {
       setLoading(true);
 
-      // DEV bypass: any phone + code "123456"
-      if (code === '123456') {
+      // Dev-only bypass so this screen is testable without a real SMS provider
+      // configured — never present in a release build (Metro strips the __DEV__
+      // branch), same pattern as ProfileScreen's Switch User gate.
+      if (__DEV__ && code === '123456') {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           const { error: updateError } = await supabase
@@ -54,6 +64,7 @@ export default function PhoneVerificationScreen({ onVerified }: { onVerified: ()
           .eq('id', user.id);
         if (updateError) throw updateError;
       }
+      onVerified();
     } catch (e: any) {
       Alert.alert('Error', e.message);
     } finally {
@@ -122,7 +133,7 @@ export default function PhoneVerificationScreen({ onVerified }: { onVerified: ()
               ))}
             </View>
 
-            <Text style={styles.note}>Dev mode: use 123456 to bypass SMS verification</Text>
+            {__DEV__ && <Text style={styles.note}>Dev mode: use 123456 to bypass SMS verification</Text>}
 
             <TouchableOpacity style={styles.button} onPress={verifyCode} disabled={loading || otp.join('').length < 6}>
               {loading ? <ActivityIndicator color={colors.text} /> : <Text style={styles.buttonText}>Verify code</Text>}

@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.17"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -373,6 +373,9 @@ export type Database = {
           conversation_id: string
           created_at: string
           id: string
+          media_duration_seconds: number | null
+          media_path: string | null
+          message_type: string
           sender_id: string
           transaction_id: string | null
         }
@@ -381,6 +384,9 @@ export type Database = {
           conversation_id: string
           created_at?: string
           id?: string
+          media_duration_seconds?: number | null
+          media_path?: string | null
+          message_type?: string
           sender_id: string
           transaction_id?: string | null
         }
@@ -389,6 +395,9 @@ export type Database = {
           conversation_id?: string
           created_at?: string
           id?: string
+          media_duration_seconds?: number | null
+          media_path?: string | null
+          message_type?: string
           sender_id?: string
           transaction_id?: string | null
         }
@@ -654,6 +663,8 @@ export type Database = {
       }
       reports: {
         Row: {
+          context_conversation_id: string | null
+          context_item_id: string | null
           created_at: string
           description: string | null
           id: string
@@ -665,6 +676,8 @@ export type Database = {
           status: string
         }
         Insert: {
+          context_conversation_id?: string | null
+          context_item_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -676,6 +689,8 @@ export type Database = {
           status?: string
         }
         Update: {
+          context_conversation_id?: string | null
+          context_item_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -687,6 +702,20 @@ export type Database = {
           status?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "reports_context_conversation_id_fkey"
+            columns: ["context_conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reports_context_item_id_fkey"
+            columns: ["context_item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "reports_reported_user_id_fkey"
             columns: ["reported_user_id"]
@@ -1133,6 +1162,19 @@ export type Database = {
         Args: { p_transaction_id: string; p_user_id: string }
         Returns: string
       }
+      admin_get_conversation_messages: {
+        Args: { p_conversation_id: string }
+        Returns: {
+          content: string
+          created_at: string
+          item_title: string
+          lender_name: string
+          message_id: string
+          renter_name: string
+          sender_id: string
+          sender_name: string
+        }[]
+      }
       admin_list_disputes: {
         Args: never
         Returns: {
@@ -1194,9 +1236,13 @@ export type Database = {
       admin_list_reports: {
         Args: never
         Returns: {
+          context_conversation_id: string
+          context_item_id: string
           created_at: string
           description: string
           id: string
+          item_photo: string
+          item_title: string
           reason: string
           reported_user_id: string
           reported_user_name: string
@@ -1509,14 +1555,25 @@ export type Database = {
         Args: { p_description?: string; p_photo_url?: string; p_tx: string }
         Returns: string
       }
-      report_user: {
-        Args: {
-          p_description?: string
-          p_reason: string
-          p_reported_user_id: string
-        }
-        Returns: string
-      }
+      report_user:
+        | {
+            Args: {
+              p_description?: string
+              p_reason: string
+              p_reported_user_id: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_conversation_id?: string
+              p_description?: string
+              p_item_id?: string
+              p_reason: string
+              p_reported_user_id: string
+            }
+            Returns: string
+          }
       scan_qr_handoff: {
         Args: { p_phase: string; p_token: string; p_tx: string }
         Returns: string

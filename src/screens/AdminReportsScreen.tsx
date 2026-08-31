@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -8,7 +8,7 @@ import { supabase } from '../services/supabase';
 import { useAdminList } from '../hooks/useAdminList';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
-import { ChevronLeft, Flag, User } from 'lucide-react-native';
+import { ChevronLeft, Flag, User, Package, MessageCircle } from 'lucide-react-native';
 
 type Props = NativeStackScreenProps<ProfileStackParamList, 'AdminReports'>;
 
@@ -21,6 +21,10 @@ type ReportRow = {
   reason: string;
   description: string | null;
   created_at: string;
+  context_conversation_id: string | null;
+  context_item_id: string | null;
+  item_title: string | null;
+  item_photo: string | null;
 };
 
 // Backlog AA: intake for a user reporting another user (PublicProfileScreen's
@@ -65,6 +69,26 @@ export default function AdminReportsScreen({ navigation }: Props) {
         {r.description ? (
           <Text style={styles.description}>&quot;{r.description}&quot;</Text>
         ) : null}
+
+        {/* Context the reporter attached, if any — lets the admin actually
+            see what was flagged instead of ruling on an isolated claim. */}
+        {r.item_title && (
+          <View style={styles.contextRow}>
+            {r.item_photo
+              ? <Image source={{ uri: r.item_photo }} style={styles.contextThumb} />
+              : <View style={[styles.contextThumb, styles.contextThumbFallback]}><Package size={16} color={colors.textFaint} /></View>}
+            <Text style={styles.contextText} numberOfLines={1}>Reported listing: {r.item_title}</Text>
+          </View>
+        )}
+        {r.context_conversation_id && (
+          <TouchableOpacity
+            style={styles.contextRow}
+            onPress={() => navigation.navigate('AdminConversationView', { conversationId: r.context_conversation_id as string })}
+          >
+            <MessageCircle size={16} color={colors.primary} />
+            <Text style={[styles.contextText, styles.contextLinkText]}>View the conversation this was reported from</Text>
+          </TouchableOpacity>
+        )}
 
         <View style={styles.actionsRow}>
           <TouchableOpacity
@@ -137,6 +161,11 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   reason: { fontSize: 15, fontWeight: '700', color: colors.text },
   subtext: { fontSize: 12, color: colors.textFaint },
   description: { fontSize: 13, color: colors.textMuted, fontStyle: 'italic' },
+  contextRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  contextThumb: { width: 28, height: 28, borderRadius: 6 },
+  contextThumbFallback: { backgroundColor: colors.chip, alignItems: 'center', justifyContent: 'center' },
+  contextText: { flex: 1, fontSize: 13, color: colors.textMuted },
+  contextLinkText: { color: colors.primary, fontWeight: '600' },
   actionsRow: { flexDirection: 'row', gap: 8 },
   manageBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,

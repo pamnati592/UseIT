@@ -41,6 +41,7 @@ https://www.figma.com/make/RbE6DxiKS51wtRikFVI4kN/Marketplace-App-Wireframes
 - **AI Agent runs on Groq, not Gemini** (spec 4.6/5.4).
 - **Backend is Supabase edge functions (TypeScript/Deno), not Python + FastAPI** (spec 5.4) — there is no Python in this repo.
 - **RTL / Hebrew UI is explicitly out of scope** (spec 4.3) — superseded by the 2026-08-19 decision to build for real public release rather than the original course-demo target; see `NEXT_STEP.md`.
+- **No biometric identity verification** (spec 4.2) — that spec item means real user identity verification (an external KYC service — ID document + selfie match, e.g. Stripe Identity), not an on-device app-unlock. A device Face ID/Touch ID gate was built earlier under a misread of this requirement, then removed 2026-08-31 once caught — it verified the phone's owner, not the platform user's real-world identity, so it didn't satisfy the spec anyway. Real KYC is a deliberately deferred decision: needs a paid external service (~$1.50/verification via Stripe Identity, the natural fit since Stripe is already integrated) and non-trivial build time (new edge function for the verification session, a DB column + migration, a new native SDK + rebuild, UI for the upload flow) — not something to add without discussing cost/timing first.
 
 Check `NEXT_STEP.md` for the current backlog and any other gaps between the spec and what's actually shipped.
 
@@ -62,6 +63,14 @@ The UX flow triggered when a user taps an unread badge: the app auto-navigates t
 
 - **Entry points:** Chats tab badge, conversation green dot, any `highlightAfterTimestamp` + `targetTransactionId` param passed to `ChatRoomScreen`.
 - **Rule:** Any new notification or status-change that the user needs to act on must be wired into the Badge Jump flow — never just open the Chats tab root.
+
+### Overflow Menu
+Any action that isn't a screen's core purpose belongs behind a single 3-dot (⋮) button in that screen's header — never as a standalone icon or inline text link scattered elsewhere on the page.
+
+- **Component:** `src/components/OverflowMenu.tsx` — pass an `items` array (`{ key, label, icon, onPress, destructive? }`); renders nothing if the array is empty, so callers don't need their own visibility wrapper around it.
+- **Example:** `PublicProfileScreen`'s "Report user", `ItemDetailScreen`'s "Report this listing", `ChatRoomScreen`'s "Report {name}" all live in that screen's header `OverflowMenu` rather than a loose flag icon or inline link.
+- **Rule:** Before adding a new icon/link button to a screen, ask: "Is this the screen's primary purpose (e.g. Submit Report inside the report modal, Send inside chat), or a secondary action on it?" Primary actions stay inline/prominent; secondary ones go in the Overflow Menu.
+- **Why:** Keeps each screen's header predictable and its primary UI uncluttered — secondary actions have one consistent place to look, instead of being wherever they happened to fit visually.
 
 ---
 

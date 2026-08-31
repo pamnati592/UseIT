@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  ActivityIndicator, Alert,
+  ActivityIndicator, Alert, BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Calendar } from 'react-native-calendars';
@@ -89,7 +89,20 @@ function buildCalendarMarks(
 export default function ManageItemScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const { itemId, itemTitle } = route.params;
+  const { itemId, itemTitle, returnToChat } = route.params;
+
+  // Cross-tab entry point (from ChatRoomScreen's calendar icon) should exit back
+  // to that same conversation, not wherever this stack's own state happens to
+  // land — used by the back button, the gesture/hardware-back override below.
+  function goBackToOrigin() {
+    if (returnToChat) {
+      (navigation as any).getParent()?.navigate('Chats', { screen: 'ChatRoom', params: returnToChat });
+    } else if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      (navigation as any).getParent()?.navigate('Profile', { screen: 'ProfileMain' });
+    }
+  }
 
   const [rentalRanges,  setRentalRanges]  = useState<RentalRange[]>([]);
   const [blockedRanges, setBlockedRanges] = useState<BlockedRange[]>([]);
@@ -102,6 +115,20 @@ export default function ManageItemScreen({ navigation, route }: Props) {
   const [visibleMonth, setVisibleMonth] = useState(TODAY.slice(0, 7));
 
   useEffect(() => { loadData(); }, []);
+
+  // Reached cross-tab, the swipe-back gesture (iOS) and hardware back (Android)
+  // both bypass the on-screen back button — they call goBack() directly through
+  // the native stack, which doesn't know about returnToChat at all. Both are
+  // redirected through the same origin-aware handler here.
+  useEffect(() => {
+    if (!returnToChat) return;
+    navigation.setOptions({ gestureEnabled: false });
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      goBackToOrigin();
+      return true;
+    });
+    return () => sub.remove();
+  }, [returnToChat, navigation]);
 
   async function loadData() {
     setLoading(true);
@@ -227,7 +254,13 @@ export default function ManageItemScreen({ navigation, route }: Props) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MyItems')}>
+        {/* Also reachable cross-tab from ChatRoomScreen's calendar icon (returnToChat
+            param) — that entry point should exit back to that same conversation,
+            not wherever this stack's own (unreliable, in that case) history points. */}
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={goBackToOrigin}
+        >
           <ChevronLeft size={28} color={colors.text} />
         </TouchableOpacity>
         <View style={styles.headerText}>

@@ -4,23 +4,32 @@ import {
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Modal, Image,
   Keyboard, TouchableWithoutFeedback, type ListRenderItemInfo,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStripe } from '@stripe/stripe-react-native';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
+import {
+  useAudioRecorder, useAudioRecorderState, RecordingPresets, createAudioPlayer,
+  requestRecordingPermissionsAsync, setAudioModeAsync, type AudioPlayer,
+} from 'expo-audio';
 import { supabase } from '../services/supabase';
 import type { Database } from '../types/database';
 import { formatPrice } from '../utils/format';
 import { chatBus } from '../services/chatBus';
 import { insertSystemMessage as sharedInsertSystemMessage } from '../services/chatMessages';
-import { uploadImage, HANDOFF_EVIDENCE_BUCKET, disputePhotoPath } from '../services/storage';
+import {
+  uploadImage, uploadAudio, uploadVideo, signedUrlFor, HANDOFF_EVIDENCE_BUCKET, CHAT_MEDIA_BUCKET, disputePhotoPath, chatMediaPath,
+} from '../services/storage';
 import { useTheme } from '../theme/ThemeContext';
 import { useAdminMode } from '../contexts/AdminModeContext';
 import { CategoryIcon } from '../components/CategoryIcon';
+import { OverflowMenu } from '../components/OverflowMenu';
+import { VoiceMessageBubble } from '../components/VoiceMessageBubble';
+import { VideoMessageBubble } from '../components/VideoMessageBubble';
 import {
   Check, X, CreditCard, Clock, ChevronLeft, Package, Calendar, MessageCircle, ClipboardList, ArrowUp,
   ScanLine, QrCode, CircleCheck, TriangleAlert, MapPin, MessageSquare, Scale, UserRound, ShoppingCart, Camera,
-  ShieldCheck, Info,
+  ShieldCheck, Info, Flag, Mic, Images, Video,
 } from 'lucide-react-native';
 import { makeStyles } from './ChatRoomScreen.styles';
 import {
@@ -35,6 +44,7 @@ import {
 export default function ChatRoomScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
   // An admin is UseIT — contacting "UseIT support" from their own rental as
   // a party makes no sense, so the button is hidden for them entirely.
   const { isAdmin } = useAdminMode();
@@ -47,6 +57,17 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   const [currentUserName, setCurrentUserName] = useState<string>('Me');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [sendingMedia, setSendingMedia] = useState(false);
+  const [photoPickerVisible, setPhotoPickerVisible] = useState(false);
+  const [mediaUrls, setMediaUrls] = useState<Record<string, string>>({}); // media_path -> signed url
+  const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
+  const [playbackTime, setPlaybackTime] = useState({ currentTime: 0, duration: 0 });
+  const [recordingLevels, setRecordingLevels] = useState<number[]>([]);
+  const audioPlayerRef = useRef<AudioPlayer | null>(null);
+  // Metering on, and a faster poll than the 500ms default, so the recording
+  // row's live level bars actually look live rather than stepping visibly.
+  const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true });
+  const recorderState = useAudioRecorderState(recorder, 50);
   const [convInfo, setConvInfo] = useState<ConversationInfo | null>(null);
   const [itemPhotoUrl, setItemPhotoUrl] = useState<string | null>(null);
   const [itemCategory, setItemCategory] = useState<string>('other');
@@ -88,7 +109,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       const [messagesRes, convRes, txRes, purchasesRes, disputesRes, chargesRes] = await Promise.all([
         supabase
           .from('messages')
-          .select('id, sender_id, content, created_at, transaction_id')
+          .select('id, sender_id, content, created_at, transaction_id, message_type, media_path, media_duration_seconds')
           .eq('conversation_id', conversationId)
           .order('created_at', { ascending: false }),
         supabase
@@ -319,26 +340,23 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     }, [conversationId])
   );
 
-  // After messages + transactions load, scroll to the target rental request card
+  // After messages + transactions load, scroll to and highlight the target
+  // rental card. Searches feedRows directly — the actual rendered list for
+  // whichever tab is active — rather than a separately-filtered copy of
+  // messages: that used to match on ANY message carrying the transaction id
+  // (e.g. a "Request approved" status message), not specifically the
+  // RENTAL_REQUEST_PREFIX one Deal Board actually renders as a card, so the
+  // index and highlighted id were both frequently wrong and nothing lit up.
   useEffect(() => {
-    if (loading || !targetTransactionId || messages.length === 0) return;
-    const rentalMsgs = messages.filter(m => !!m.transaction_id);
-    const tx = transactions[targetTransactionId];
-    let idx = rentalMsgs.findIndex(m => m.transaction_id === targetTransactionId);
-    if (idx < 0 && tx) {
-      const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-      const d = new Date(tx.start_date);
-      const token = `${d.getUTCDate()} ${monthNames[d.getUTCMonth()]}`;
-      idx = rentalMsgs.findIndex(m => m.content.startsWith(RENTAL_REQUEST_PREFIX) && m.content.includes(token));
-    }
-    if (idx >= 0) {
-      const msgId = rentalMsgs[idx].id;
-      setTimeout(() => {
-        flatListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.4 });
-        setHighlightedMessageId(msgId);
-        setTimeout(() => setHighlightedMessageId(null), 1200);
-      }, 350);
-    }
+    if (loading || !targetTransactionId || feedRows.length === 0) return;
+    const idx = feedRows.findIndex(row => row.kind === 'rental' && row.tx?.id === targetTransactionId);
+    if (idx < 0) return;
+    const msgId = (feedRows[idx] as { kind: 'rental'; msg: Message }).msg.id;
+    setTimeout(() => {
+      flatListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.4 });
+      setHighlightedMessageId(msgId);
+      setTimeout(() => setHighlightedMessageId(null), 1200);
+    }, 350);
   }, [loading]);
 
   // When arriving from a badged conversation, highlight the newest unread message and switch tab if needed
@@ -383,6 +401,20 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     await supabase.from('conversations').update(update).eq('id', conversationId);
   }
 
+  // Shared tail of every message send (text, photo, or voice) — the conversation's
+  // last_message/last_message_at and the sender's own last_read_at land in one
+  // update, not two sequential ones, so there's no window where a listener
+  // (including the sender's own device) briefly sees "unread" for what it just sent.
+  async function afterMessageSent(previewContent: string) {
+    const now = new Date().toISOString();
+    const readField = convInfo?.lender_id === currentUserId ? 'lender_last_read_at' : 'renter_last_read_at';
+    const update: Pick<Database['public']['Tables']['conversations']['Update'], 'last_message' | 'last_message_at' | 'renter_last_read_at' | 'lender_last_read_at'> = { last_message: previewContent, last_message_at: now, [readField]: now };
+    await supabase.from('conversations').update(update).eq('id', conversationId);
+    chatBus.notify();
+  }
+
+  const MESSAGE_SELECT = 'id, sender_id, content, created_at, transaction_id, message_type, media_path, media_duration_seconds';
+
   async function send() {
     const content = text.trim();
     if (!content || !currentUserId || sending) return;
@@ -393,22 +425,230 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
       conversation_id: conversationId,
       sender_id: currentUserId,
       content,
-    }).select('id, sender_id, content, created_at, transaction_id').single();
+    }).select(MESSAGE_SELECT).single();
 
     if (!error && data) {
       setMessages(prev => [data as Message, ...prev]);
-      const now = new Date().toISOString();
-      // last_message_at and the sender's own last_read_at land in one update, not
-      // two sequential ones — a gap between them is a real window where any
-      // listener (including the sender's own device) sees "unread" for a message
-      // that was just sent, self-correcting a moment later as a visible flash.
-      const readField = convInfo?.lender_id === currentUserId ? 'lender_last_read_at' : 'renter_last_read_at';
-      const update: Pick<Database['public']['Tables']['conversations']['Update'], 'last_message' | 'last_message_at' | 'renter_last_read_at' | 'lender_last_read_at'> = { last_message: content, last_message_at: now, [readField]: now };
-      await supabase.from('conversations').update(update).eq('id', conversationId);
-      chatBus.notify();
+      await afterMessageSent(content);
     }
     setSending(false);
   }
+
+  async function sendImageMessage(asset: ImagePicker.ImagePickerAsset) {
+    if (!currentUserId || !asset.base64 || sendingMedia) return;
+    setSendingMedia(true);
+    try {
+      const path = await uploadImage(
+        CHAT_MEDIA_BUCKET,
+        chatMediaPath(conversationId, 'image'),
+        { base64: asset.base64, mimeType: asset.mimeType ?? 'image/jpeg' },
+      );
+      const content = '📷 Photo';
+      const { data, error } = await supabase.from('messages').insert({
+        conversation_id: conversationId, sender_id: currentUserId, content,
+        message_type: 'image', media_path: path,
+      }).select(MESSAGE_SELECT).single();
+      if (error) throw error;
+      setMessages(prev => [data as Message, ...prev]);
+      await afterMessageSent(content);
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Could not send photo.');
+    } finally {
+      setSendingMedia(false);
+    }
+  }
+
+  async function sendVideoMessage(asset: ImagePicker.ImagePickerAsset) {
+    if (!currentUserId || sendingMedia) return;
+    setSendingMedia(true);
+    try {
+      const path = await uploadVideo(CHAT_MEDIA_BUCKET, chatMediaPath(conversationId, 'video'), asset.uri);
+      const content = '🎥 Video';
+      const { data, error } = await supabase.from('messages').insert({
+        conversation_id: conversationId, sender_id: currentUserId, content,
+        message_type: 'video', media_path: path,
+      }).select(MESSAGE_SELECT).single();
+      if (error) throw error;
+      setMessages(prev => [data as Message, ...prev]);
+      await afterMessageSent(content);
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Could not send video.');
+    } finally {
+      setSendingMedia(false);
+    }
+  }
+
+  // A custom centered bottom sheet rather than Alert.alert — the native Alert
+  // right-aligns its buttons on Android, inconsistent with every other choice
+  // picker in this app (all of which use this same modalOverlay/modalSheet pattern).
+  function handleAttachPhoto() {
+    setPhotoPickerVisible(true);
+  }
+
+  async function pickPhotoFromCamera() {
+    setPhotoPickerVisible(false);
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') { Alert.alert('Permission required', 'Camera access is needed.'); return; }
+    const r = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.7, base64: true });
+    if (!r.canceled && r.assets[0]) await sendImageMessage(r.assets[0]);
+  }
+
+  async function pickVideoFromCamera() {
+    setPhotoPickerVisible(false);
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') { Alert.alert('Permission required', 'Camera access is needed.'); return; }
+    const r = await ImagePicker.launchCameraAsync({ mediaTypes: ['videos'], videoMaxDuration: 60 });
+    if (!r.canceled && r.assets[0]) await sendVideoMessage(r.assets[0]);
+  }
+
+  // One gallery picker for both — the asset's own `type` tells us which upload path to use.
+  async function pickMediaFromGallery() {
+    setPhotoPickerVisible(false);
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') { Alert.alert('Permission required', 'Photo library access is needed.'); return; }
+    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images', 'videos'], quality: 0.7, base64: true, videoMaxDuration: 60 });
+    if (r.canceled || !r.assets[0]) return;
+    const asset = r.assets[0];
+    if (asset.type === 'video') await sendVideoMessage(asset);
+    else await sendImageMessage(asset);
+  }
+
+  async function sendAudioMessage(localUri: string, durationSeconds: number) {
+    if (!currentUserId || sendingMedia) return;
+    setSendingMedia(true);
+    try {
+      const path = await uploadAudio(CHAT_MEDIA_BUCKET, chatMediaPath(conversationId, 'audio'), localUri);
+      const content = '🎤 Voice message';
+      const { data, error } = await supabase.from('messages').insert({
+        conversation_id: conversationId, sender_id: currentUserId, content,
+        message_type: 'audio', media_path: path, media_duration_seconds: durationSeconds,
+      }).select(MESSAGE_SELECT).single();
+      if (error) throw error;
+      setMessages(prev => [data as Message, ...prev]);
+      await afterMessageSent(content);
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Could not send voice message.');
+    } finally {
+      setSendingMedia(false);
+    }
+  }
+
+  // Tap-to-start / tap-to-stop rather than press-and-hold — mirrors the rest of
+  // this screen's controls (nothing else here relies on a hold gesture), and
+  // means a slow or shaky tap can't cut a recording off early.
+  async function handleMicPress() {
+    if (recorderState.isRecording) {
+      await recorder.stop();
+      const uri = recorder.uri;
+      const durationSeconds = Math.round(recorderState.durationMillis / 1000);
+      if (uri && durationSeconds > 0) await sendAudioMessage(uri, durationSeconds);
+      return;
+    }
+    const { granted } = await requestRecordingPermissionsAsync();
+    if (!granted) { Alert.alert('Permission required', 'Microphone access is needed.'); return; }
+    // Starting a new recording while a voice message is playing would run both
+    // at once — stop playback first, same as starting one voice message stops another.
+    audioPlayerRef.current?.pause();
+    setPlayingMessageId(null);
+    await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+    await recorder.prepareToRecordAsync();
+    recorder.record();
+  }
+
+  async function handleCancelRecording() {
+    await recorder.stop(); // discarded — never uploaded, nothing else to clean up
+  }
+
+  // Live level feedback while recording — metering is in dB (roughly -60 silence
+  // to 0 max in practice), normalized into a 0-1 bar height and appended to a
+  // rolling window so the row reads as a scrolling waveform, not a static meter.
+  useEffect(() => {
+    if (!recorderState.isRecording) {
+      setRecordingLevels([]);
+      return;
+    }
+    const level = recorderState.metering != null
+      ? Math.max(0, Math.min(1, (recorderState.metering + 60) / 60))
+      : 0;
+    setRecordingLevels(prev => [...prev.slice(-27), level]);
+  }, [recorderState.metering, recorderState.isRecording]);
+
+  function formatRecordingDuration(durationMillis: number): string {
+    const totalSeconds = Math.floor(durationMillis / 1000);
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }
+
+  // One shared player for the whole screen rather than one per bubble — only one
+  // voice message plays at a time, matching how every chat app handles this.
+  // `startAtFraction` covers tapping the waveform of a message that isn't
+  // playing yet — starts playback and seeks once the source has actually
+  // loaded, rather than trying to seek before there's a duration to seek within.
+  async function toggleAudioPlayback(messageId: string, mediaPath: string, startAtFraction?: number) {
+    if (playingMessageId === messageId) {
+      audioPlayerRef.current?.pause();
+      setPlayingMessageId(null);
+      return;
+    }
+    audioPlayerRef.current?.pause();
+    audioPlayerRef.current?.remove();
+    // Without this, playback silently respects the phone's silent switch / default
+    // audio session — it looks like it's playing (state flips) but nothing is
+    // audible, since recording is the only other place this gets set, and a
+    // listener who's never recorded on this device never triggers it.
+    await setAudioModeAsync({ playsInSilentMode: true });
+    // Already cached by the effect above for every message currently on screen —
+    // this fallback only matters for one that arrived a beat before the cache did.
+    const url = mediaUrls[mediaPath] ?? await signedUrlFor(CHAT_MEDIA_BUCKET, mediaPath);
+    if (!url) { Alert.alert('Error', 'Could not load voice message.'); return; }
+    const player = createAudioPlayer(url);
+    setPlaybackTime({ currentTime: 0, duration: 0 });
+    let pendingSeek = startAtFraction;
+    player.addListener('playbackStatusUpdate', (status) => {
+      setPlaybackTime({ currentTime: status.currentTime, duration: status.duration });
+      if (pendingSeek != null && status.duration > 0) {
+        const target = pendingSeek;
+        pendingSeek = undefined;
+        player.seekTo(target * status.duration);
+      }
+      if (status.didJustFinish) setPlayingMessageId(null);
+    });
+    audioPlayerRef.current = player;
+    player.play();
+    setPlayingMessageId(messageId);
+  }
+
+  // Reads the player's own live duration rather than the playbackTime React
+  // state — that state can lag a tick behind, which is exactly why seeking
+  // sometimes landed back at 0 (duration read as 0 right after a tap).
+  async function seekAudioPlayback(fraction: number) {
+    const player = audioPlayerRef.current;
+    if (!player || !player.duration) return;
+    await player.seekTo(fraction * player.duration);
+  }
+
+  useEffect(() => {
+    return () => { audioPlayerRef.current?.remove(); };
+  }, []);
+
+  // Every media bubble needs a signed URL to actually render/play (chat-media is
+  // a private bucket) — fetched once per path and cached. Audio is included here
+  // too so tapping play doesn't wait on a fresh sign round-trip every time.
+  useEffect(() => {
+    const missing = messages.filter(m => (m.message_type === 'image' || m.message_type === 'video' || m.message_type === 'audio') && m.media_path && !mediaUrls[m.media_path]);
+    if (missing.length === 0) return;
+    (async () => {
+      const entries = await Promise.all(
+        missing.map(async m => [m.media_path as string, await signedUrlFor(CHAT_MEDIA_BUCKET, m.media_path as string)] as const),
+      );
+      setMediaUrls(prev => {
+        const next = { ...prev };
+        for (const [path, url] of entries) if (url) next[path] = url;
+        return next;
+      });
+    })();
+  }, [messages, mediaUrls]);
 
   // Update conversation timestamp BEFORE inserting the message so that when the
   // realtime UPDATE event fires, ConversationsContext already sees the updated
@@ -889,12 +1129,46 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     if (row.kind === 'chat') {
       const msg = row.msg;
       const isMe = msg.sender_id === currentUserId;
+      const isImage = msg.message_type === 'image' && !!msg.media_path;
+      const isVideo = msg.message_type === 'video' && !!msg.media_path;
+      const isAudio = msg.message_type === 'audio' && !!msg.media_path;
       return (
         <View style={[styles.bubbleWrapper, isMe ? styles.bubbleWrapperMe : styles.bubbleWrapperThem, msg.id === highlightedMessageId && styles.highlighted]}>
-          <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
-            <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
-              {msg.content}
-            </Text>
+          <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem, (isImage || isVideo) && styles.bubbleImageWrap]}>
+            {isImage ? (
+              mediaUrls[msg.media_path!] ? (
+                <Image source={{ uri: mediaUrls[msg.media_path!] }} style={styles.bubbleImage} resizeMode="cover" />
+              ) : (
+                <View style={styles.bubbleImageLoading}>
+                  <ActivityIndicator color={isMe ? colors.btnText : colors.text} />
+                </View>
+              )
+            ) : isVideo ? (
+              mediaUrls[msg.media_path!] ? (
+                <VideoMessageBubble uri={mediaUrls[msg.media_path!]} />
+              ) : (
+                <View style={styles.bubbleImageLoading}>
+                  <ActivityIndicator color={isMe ? colors.btnText : colors.text} />
+                </View>
+              )
+            ) : isAudio ? (
+              <VoiceMessageBubble
+                messageId={msg.id}
+                isMe={isMe}
+                isPlaying={playingMessageId === msg.id}
+                currentTime={playingMessageId === msg.id ? playbackTime.currentTime : 0}
+                duration={playingMessageId === msg.id && playbackTime.duration ? playbackTime.duration : (msg.media_duration_seconds ?? 0)}
+                onToggle={() => toggleAudioPlayback(msg.id, msg.media_path!)}
+                onSeek={(fraction) => {
+                  if (playingMessageId === msg.id) seekAudioPlayback(fraction);
+                  else toggleAudioPlayback(msg.id, msg.media_path!, fraction);
+                }}
+              />
+            ) : (
+              <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>
+                {msg.content}
+              </Text>
+            )}
           </View>
           <Text style={[styles.bubbleTime, isMe ? styles.bubbleTimeMe : styles.bubbleTimeThem]}>
             {formatTime(msg.created_at)}
@@ -1251,19 +1525,40 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
             <Text style={styles.headerItem} numberOfLines={1}>{itemTitle}</Text>
           </View>
         </TouchableOpacity>
-        {isLender && convInfo?.item_id && (
-          <TouchableOpacity
-            style={styles.calendarBtn}
-            onPress={() => {
-              (navigation as any).getParent()?.navigate('Profile', {
-                screen: 'ManageItem',
-                params: { itemId: convInfo.item_id, itemTitle },
-              });
-            }}
-          >
-            <Calendar size={20} color={colors.text} />
-          </TouchableOpacity>
-        )}
+        {/* Managing the item's calendar isn't this screen's core purpose — it lives
+            in the overflow menu, same as reporting the user, rather than its own
+            standalone header icon. Reporting the user's account/behavior is a
+            different concern from "Report a Problem" (a transaction dispute,
+            still reached via Get Help below) — this navigates straight to
+            PublicProfileScreen's own report modal (SAS), carrying the
+            conversation id for admin context. */}
+        <OverflowMenu
+          items={[
+            ...(isLender && convInfo?.item_id ? [
+              {
+                key: 'manage-item', label: 'Manage Item Calendar', icon: Calendar,
+                onPress: () => {
+                  (navigation as any).getParent()?.navigate('Profile', {
+                    screen: 'ManageItem',
+                    params: { itemId: convInfo.item_id, itemTitle, returnToChat: { conversationId, itemTitle, otherUserName } },
+                  });
+                },
+              },
+            ] : []),
+            ...(!isAdmin && convInfo ? [
+              {
+                key: 'report', label: `Report ${otherUserName}`, icon: Flag, destructive: true,
+                onPress: () => {
+                  const otherId = isLender ? convInfo.renter_id : convInfo.lender_id;
+                  (navigation as any).getParent()?.navigate('HomeStack', {
+                    screen: 'PublicProfile',
+                    params: { userId: otherId, userName: otherUserName, conversationId, autoOpenReport: true },
+                  });
+                },
+              },
+            ] : []),
+          ]}
+        />
       </View>
 
       {/* Tab bar */}
@@ -1322,26 +1617,53 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
 
         {activeTab === 'chat' && (
           <View style={styles.inputRow}>
-            <TextInput
-              style={styles.input}
-              placeholder="Message..."
-              placeholderTextColor={colors.textFaint}
-              value={text}
-              onChangeText={setText}
-              multiline
-              maxLength={500}
-              onSubmitEditing={send}
-            />
-            <TouchableOpacity
-              style={[styles.sendBtn, (!text.trim() || sending) && styles.sendBtnDisabled]}
-              onPress={send}
-              disabled={!text.trim() || sending}
-            >
-              {sending
-                ? <ActivityIndicator color={colors.btnText} size="small" />
-                : <ArrowUp size={20} color={text.trim() ? colors.btnText : colors.textFaint} strokeWidth={2.5} />
-              }
-            </TouchableOpacity>
+            {recorderState.isRecording ? (
+              <>
+                <View style={styles.recordingIndicator}>
+                  <View style={styles.recordingDot} />
+                  <View style={styles.recordingBars}>
+                    {recordingLevels.map((level, i) => (
+                      <View key={i} style={[styles.recordingBar, { height: `${Math.max(15, Math.round(level * 100))}%` }]} />
+                    ))}
+                  </View>
+                  <Text style={styles.recordingText}>{formatRecordingDuration(recorderState.durationMillis)}</Text>
+                </View>
+                <TouchableOpacity style={styles.attachBtn} onPress={handleCancelRecording}>
+                  <X size={22} color={colors.textMuted} />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.sendBtn} onPress={handleMicPress}>
+                  <Check size={20} color={colors.btnText} strokeWidth={2.5} />
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TouchableOpacity style={styles.attachBtn} onPress={handleAttachPhoto} disabled={sendingMedia}>
+                  <Camera size={22} color={colors.textMuted} />
+                </TouchableOpacity>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Message..."
+                  placeholderTextColor={colors.textFaint}
+                  value={text}
+                  onChangeText={setText}
+                  multiline
+                  maxLength={500}
+                  onSubmitEditing={send}
+                />
+                <TouchableOpacity
+                  style={[styles.sendBtn, (sending || sendingMedia) && styles.sendBtnDisabled]}
+                  onPress={text.trim() ? send : handleMicPress}
+                  disabled={sending || sendingMedia}
+                >
+                  {sending || sendingMedia
+                    ? <ActivityIndicator color={colors.btnText} size="small" />
+                    : text.trim()
+                      ? <ArrowUp size={20} color={colors.btnText} strokeWidth={2.5} />
+                      : <Mic size={20} color={colors.textMuted} />
+                  }
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         )}
       </KeyboardAvoidingView>
@@ -1359,7 +1681,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
             sheet sits under the keyboard with no way to dismiss it. */}
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.modalSheet}>
+          <View style={[styles.modalSheet, { paddingBottom: 20 + insets.bottom }]}>
             {disputeModal.step === 1 ? (
               <>
                 <View style={styles.modalHandle} />
@@ -1515,7 +1837,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
             style={styles.modalOverlay}
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           >
-            <View style={styles.modalSheet}>
+            <View style={[styles.modalSheet, { paddingBottom: 20 + insets.bottom }]}>
             <View style={styles.modalHandle} />
             <View style={[styles.modalIconCircle, { backgroundColor: colors.warningBg, alignSelf: 'center' }]}>
               <TriangleAlert size={24} color={colors.warning} />
@@ -1561,6 +1883,30 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
             </View>
           </KeyboardAvoidingView>
         </TouchableWithoutFeedback>
+      </Modal>
+
+      <Modal visible={photoPickerVisible} transparent animationType="slide" onRequestClose={() => setPhotoPickerVisible(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setPhotoPickerVisible(false)}>
+          <View style={[styles.modalSheet, { paddingBottom: 20 + insets.bottom }]}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Send Media</Text>
+            <TouchableOpacity style={styles.modalOutlineBtn} onPress={pickPhotoFromCamera}>
+              <Camera size={16} color={colors.primary} />
+              <Text style={styles.modalOutlineBtnText}>Take Photo</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.modalOutlineBtn} onPress={pickVideoFromCamera}>
+              <Video size={16} color={colors.primary} />
+              <Text style={styles.modalOutlineBtnText}>Record Video</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.modalOutlineBtn} onPress={pickMediaFromGallery}>
+              <Images size={16} color={colors.primary} />
+              <Text style={styles.modalOutlineBtnText}>Choose from Gallery</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setPhotoPickerVisible(false)} style={styles.modalCancelLink}>
+              <Text style={styles.modalCancelLinkText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
       </Modal>
     </SafeAreaView>
   );

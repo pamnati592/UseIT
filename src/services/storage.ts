@@ -1,8 +1,10 @@
+import { File } from 'expo-file-system';
 import { supabase } from './supabase';
 
 export const ITEM_IMAGES_BUCKET = 'item-images';        // public — item galleries, avatars
 export const HANDOFF_EVIDENCE_BUCKET = 'handoff-evidence'; // private — condition & dispute photos
 export const VERIFICATION_PHOTOS_BUCKET = 'verification-photos'; // private — admin-only (spec 4.7)
+export const CHAT_MEDIA_BUCKET = 'chat-media'; // private — chat photo/voice attachments
 
 // base64 → Uint8Array. fetch() and XHR both hand back 0-byte blobs for Expo file
 // URIs on iOS, so the SDK is fed raw bytes instead. This was independently
@@ -26,17 +28,31 @@ function extensionFor(mimeType: string): string {
  * public URL, and a signed one expires. Persist the path, mint a signed URL at
  * display time with `signedUrlFor`.
  */
+async function uploadBytes(bucket: string, fileName: string, bytes: Uint8Array, contentType: string): Promise<string> {
+  const { error } = await supabase.storage.from(bucket).upload(fileName, bytes, { contentType });
+  if (error) throw error;
+  return fileName;
+}
+
 export async function uploadImage(
   bucket: string,
   path: string,
   asset: { base64: string; mimeType: string },
 ): Promise<string> {
   const fileName = `${path}.${extensionFor(asset.mimeType)}`;
-  const { error } = await supabase.storage
-    .from(bucket)
-    .upload(fileName, toBytes(asset.base64), { contentType: asset.mimeType });
-  if (error) throw error;
-  return fileName;
+  return uploadBytes(bucket, fileName, toBytes(asset.base64), asset.mimeType);
+}
+
+/** Same idea as `uploadImage`, for a recorded audio file already on disk (expo-audio hands back a local uri, not base64). */
+export async function uploadAudio(bucket: string, path: string, localUri: string): Promise<string> {
+  const bytes = new Uint8Array(await new File(localUri).arrayBuffer());
+  return uploadBytes(bucket, `${path}.m4a`, bytes, 'audio/m4a');
+}
+
+/** Same idea, for a video picked/recorded via expo-image-picker (also hands back a local uri, not base64). */
+export async function uploadVideo(bucket: string, path: string, localUri: string): Promise<string> {
+  const bytes = new Uint8Array(await new File(localUri).arrayBuffer());
+  return uploadBytes(bucket, `${path}.mp4`, bytes, 'video/mp4');
 }
 
 /** Signed read URL for a private-bucket object. Returns null if the caller can't read it. */
@@ -62,4 +78,9 @@ export function handoffPhotoPath(transactionId: string, phase: 'pickup' | 'retur
 /** Same, for the photo attached to a dispute. */
 export function disputePhotoPath(transactionId: string): string {
   return `${transactionId}/dispute-${Date.now()}`;
+}
+
+/** Same idea, for a chat photo/voice/video attachment — first segment must be the conversation id. */
+export function chatMediaPath(conversationId: string, kind: 'image' | 'audio' | 'video'): string {
+  return `${conversationId}/${kind}-${Date.now()}`;
 }

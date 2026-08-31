@@ -8,11 +8,11 @@ import { Calendar } from 'react-native-calendars';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { HomeStackParamList } from '../navigation/HomeStackNavigator';
 import { supabase } from '../services/supabase';
-import { useBiometric } from '../contexts/BiometricContext';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
-import { ChevronLeft, ChevronRight, MapPin, Tag, ShoppingCart, Heart, MessageCircle, X, Leaf, Star } from 'lucide-react-native';
+import { OverflowMenu } from '../components/OverflowMenu';
+import { ChevronLeft, ChevronRight, MapPin, Tag, ShoppingCart, Heart, MessageCircle, X, Leaf, Star, Flag } from 'lucide-react-native';
 import { getImpactScore, formatDateRange, formatPrice } from '../utils/format';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -78,7 +78,6 @@ function buildMarkedDates(
 
 export default function ItemDetailScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
-  const { isReadOnly } = useBiometric();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { item, openRent, prefilledStart, prefilledEnd } = route.params;
   const insets = useSafeAreaInsets();
@@ -211,11 +210,6 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
 
   async function sendRentalRequest() {
     if (!selectedStart || !selectedEnd) return;
-    // Spec 4.2: read-only mode without biometric verification.
-    if (isReadOnly) {
-      Alert.alert('Verify to continue', 'Sending a rental request needs Face ID / Touch ID verification first — see the banner at the top of the app.');
-      return;
-    }
     setRentLoading(true);
     try {
       const days = daysBetween(selectedStart, selectedEnd);
@@ -306,11 +300,6 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
   // Buy doesn't pay on tap — it opens the Deal Board card in chat, where the
   // buyer pays in person once they've actually received the item.
   async function handleBuy() {
-    // Spec 4.2: read-only mode without biometric verification.
-    if (isReadOnly) {
-      Alert.alert('Verify to continue', 'Buying an item needs Face ID / Touch ID verification first — see the banner at the top of the app.');
-      return;
-    }
     setBuyLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -352,15 +341,32 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" />
 
-        <TouchableOpacity
-          style={styles.backButton}
-          // Also reachable via ProfileStack (which has no 'HomeMain' route), so
-          // the fallback jumps to the Home tab instead of a specific stack root.
-          onPress={() => navigation.canGoBack() ? navigation.goBack() : (navigation as any).getParent()?.navigate('HomeStack')}
-        >
-          <ChevronLeft size={20} color={colors.text} />
-          <Text style={styles.backText}>Back</Text>
-        </TouchableOpacity>
+        <View style={styles.headerRow}>
+          <TouchableOpacity
+            style={styles.backButton}
+            // Also reachable via ProfileStack (which has no 'HomeMain' route), so
+            // the fallback jumps to the Home tab instead of a specific stack root.
+            onPress={() => navigation.canGoBack() ? navigation.goBack() : (navigation as any).getParent()?.navigate('HomeStack')}
+          >
+            <ChevronLeft size={20} color={colors.text} />
+            <Text style={styles.backText}>Back</Text>
+          </TouchableOpacity>
+          {/* Covers listings the AI moderation pass missed — carries the item id
+              so the admin sees exactly what was flagged (SAS: same
+              PublicProfileScreen report modal, not a separate implementation).
+              Hidden for your own listing. */}
+          <OverflowMenu
+            items={ownerName && item.owner_id !== currentUserId ? [
+              {
+                key: 'report', label: 'Report this listing', icon: Flag, destructive: true,
+                onPress: () => (navigation as any).navigate('PublicProfile', {
+                  userId: item.owner_id, userName: ownerName,
+                  autoOpenReport: true, reportContextItemId: item.id,
+                }),
+              },
+            ] : []}
+          />
+        </View>
 
         <ScrollView showsVerticalScrollIndicator={false}>
           {/* Photo gallery */}
@@ -426,6 +432,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
                 <ChevronRight size={18} color={colors.textFaint} />
               </TouchableOpacity>
             )}
+
 
             <View style={styles.metaRow}>
               <Text style={styles.price}>{formatPrice(item.daily_price)}/day</Text>
@@ -638,6 +645,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
 
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: 16 },
   backButton: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 16, paddingVertical: 12 },
   backText: { color: colors.text, fontSize: 15, fontWeight: '500' },
 

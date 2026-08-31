@@ -8,7 +8,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../services/supabase';
 import { uploadImage, VERIFICATION_PHOTOS_BUCKET } from '../services/storage';
-import { useBiometric } from '../contexts/BiometricContext';
 import CityPicker, { type CityValue } from '../components/CityPicker';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
@@ -25,7 +24,6 @@ type PhotoAsset = {
 
 export default function AddItemScreen() {
   const { colors } = useTheme();
-  const { isReadOnly } = useBiometric();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
@@ -170,11 +168,6 @@ export default function AddItemScreen() {
   }
 
   async function handleSubmit() {
-    // Spec 4.2: read-only mode without biometric verification.
-    if (isReadOnly) {
-      Alert.alert('Verify to continue', 'Listing an item needs Face ID / Touch ID verification first — see the banner at the top of the app.');
-      return;
-    }
     const missing = [
       !title.trim() && 'Title',
       !category && 'Category',

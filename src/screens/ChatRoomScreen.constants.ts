@@ -44,6 +44,9 @@ export type Message = {
   content: string;
   created_at: string;
   transaction_id?: string | null;
+  message_type?: 'text' | 'image' | 'audio' | 'video';
+  media_path?: string | null;
+  media_duration_seconds?: number | null;
 };
 
 export type Transaction = {

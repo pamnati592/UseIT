@@ -522,7 +522,7 @@ export default function ProfileScreen() {
 
       {/* Switch User modal */}
       <Modal visible={switchModal} transparent animationType="slide" onRequestClose={() => setSwitchModal(false)}>
-        <View style={styles.overlay}>
+        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={() => setSwitchModal(false)}>
           <View style={styles.sheet}>
             <View style={styles.sheetHandle} />
             <Text style={styles.switchTitle}>Switch User</Text>
@@ -560,7 +560,7 @@ export default function ProfileScreen() {
               <Text style={styles.cancelText}>Cancel</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
     </SafeAreaView>
   );

@@ -21,8 +21,6 @@ export const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   headerName: { fontSize: 16, fontWeight: '600', color: colors.text },
   headerItemRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 },
   headerItem: { fontSize: 12, color: colors.textFaint, flexShrink: 1 },
-  calendarBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  calendarBtnText: { fontSize: 20 },
 
   messageList: { padding: 16, gap: 8 },
   bubbleWrapper: { marginVertical: 2, maxWidth: '80%' },
@@ -123,6 +121,19 @@ export const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   sendBtnDisabled: { backgroundColor: colors.card },
   sendBtnText: { fontSize: 20, color: colors.btnText, fontWeight: '600', marginTop: -2 },
+  attachBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  recordingIndicator: {
+    flex: 1, height: 44, borderRadius: 22, backgroundColor: colors.card,
+    flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16,
+  },
+  recordingDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.danger },
+  recordingBars: { flex: 1, height: 22, flexDirection: 'row', alignItems: 'center', gap: 2 },
+  recordingBar: { flex: 1, minWidth: 2, maxWidth: 3, minHeight: 3, borderRadius: 1.5, backgroundColor: colors.danger },
+  recordingText: { fontSize: 15, color: colors.text, fontVariant: ['tabular-nums'] },
+
+  bubbleImageWrap: { padding: 3, overflow: 'hidden' },
+  bubbleImage: { width: 200, height: 200, borderRadius: 15 },
+  bubbleImageLoading: { width: 200, height: 200, alignItems: 'center', justifyContent: 'center' },
 
   tabBar: {
     flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border,
