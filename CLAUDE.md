@@ -13,16 +13,6 @@ This is the single source of truth for the project. Never rely on prior memory �
 4. Review any modified files relevant to the current task before making changes
 This ensures you are always working on the most up-to-date version of the codebase and are aware of your teammates' recent changes.
 
-## ⚠️ MANDATORY – After Every GitHub Push
-**Every time you push changes to GitHub, end your response with a clearly marked section:**
-
-```
-## Next Suggested Step
-[1–3 sentences describing the most logical next task to continue from where we left off]
-```
-
-This must appear after every push — it is the handoff note for the next session so work can resume immediately without re-explaining context.
-
 ---
 
 ## Figma Project
