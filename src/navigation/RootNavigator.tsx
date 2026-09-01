@@ -23,6 +23,13 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+// Off for now — this project has no SMS/phone provider configured in Supabase
+// Auth (real Twilio-style integration isn't worth setting up while the app is
+// a concept build, not viable in Israel today anyway given the Stripe
+// dependency). PhoneVerificationScreen and its OTP flow are left fully intact
+// below so this can be flipped back on the moment a provider is configured.
+const PHONE_VERIFICATION_REQUIRED = false;
+
 export default function RootNavigator() {
   const { colors, isDark } = useTheme();
   const [session, setSession] = useState<any>(undefined);
@@ -101,7 +108,7 @@ export default function RootNavigator() {
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           {!session ? (
             <Stack.Screen name="Login" component={LoginScreen} />
-          ) : !phoneVerified ? (
+          ) : !phoneVerified && PHONE_VERIFICATION_REQUIRED ? (
             <Stack.Screen name="PhoneVerification">
               {() => <PhoneVerificationScreen onVerified={() => setPhoneVerified(true)} />}
             </Stack.Screen>
