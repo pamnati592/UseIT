@@ -443,12 +443,26 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
 
             {itemRating && (
               <TouchableOpacity
-                style={styles.itemRatingRow}
+                style={styles.ratingCard}
                 onPress={() => navigation.navigate('ReviewsList', { mode: 'item', itemId: item.id, itemTitle: item.title })}
               >
-                <Star size={15} color={STAR_COLOR} fill={STAR_COLOR} strokeWidth={1.8} />
-                <Text style={styles.itemRatingText}>
-                  {itemRating.avg.toFixed(1)} · {itemRating.count} review{itemRating.count > 1 ? 's' : ''}
+                <View style={styles.ratingStars}>
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <Star
+                      key={i}
+                      size={20}
+                      color={STAR_COLOR}
+                      fill={i <= Math.round(itemRating.avg) ? STAR_COLOR : 'transparent'}
+                      strokeWidth={1.8}
+                    />
+                  ))}
+                </View>
+                <View style={styles.ratingScoreRow}>
+                  <Text style={styles.ratingScoreNumber}>{itemRating.avg.toFixed(1)}</Text>
+                  <Text style={styles.ratingScoreMax}> / 5</Text>
+                </View>
+                <Text style={styles.ratingCount}>
+                  {itemRating.count} review{itemRating.count > 1 ? 's' : ''}
                 </Text>
               </TouchableOpacity>
             )}
@@ -475,31 +489,16 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
               </View>
             )}
 
-            {/* Impact Score */}
+            {/* Impact Score — kept low-key on purpose, ratings are the primary trust signal */}
             {(() => {
               const score = getImpactScore(item.category, item.completed_rental_count);
-              const fill = (score - 3.0) / 2.0; // 0–1
-              const tier = score >= 4.6 ? 'Excellent' : score >= 4.1 ? 'Great' : score >= 3.6 ? 'Very Good' : 'Good';
               const co2 = ((score - 3.0) * 5 + 2).toFixed(1);
               return (
-                <View style={styles.impactCard}>
-                  <View style={styles.impactHeader}>
-                    <View style={styles.impactIconRow}>
-                      <Leaf size={15} color="#22c55e" strokeWidth={2.5} />
-                      <Text style={styles.impactLabel}>Impact Score</Text>
-                    </View>
-                    <View style={styles.impactTierBadge}>
-                      <Text style={styles.impactTierText}>{tier}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.impactScoreRow}>
-                    <Text style={styles.impactScoreNumber}>{score.toFixed(1)}</Text>
-                    <Text style={styles.impactScoreMax}> / 5.0</Text>
-                  </View>
-                  <View style={styles.impactBarTrack}>
-                    <View style={[styles.impactBarFill, { width: `${fill * 100}%` as any }]} />
-                  </View>
-                  <Text style={styles.impactCo2}>Renting instead of buying saves ~{co2} kg CO₂</Text>
+                <View style={styles.impactRow}>
+                  <Leaf size={13} color={colors.textFaint} strokeWidth={2} />
+                  <Text style={styles.impactRowText}>
+                    Impact Score {score.toFixed(1)}/5 · saves ~{co2} kg CO₂ vs. buying new
+                  </Text>
                 </View>
               );
             })()}
@@ -669,8 +668,16 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   price: { fontSize: 22, fontWeight: 'bold', color: colors.text },
   salePrice: { fontSize: 14, color: colors.textMuted },
 
-  itemRatingRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  itemRatingText: { fontSize: 13, color: colors.textSecondary, fontWeight: '600' },
+  ratingCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16, borderWidth: 1, borderColor: 'rgba(245,158,11,0.25)',
+    padding: 16, gap: 8, alignItems: 'flex-start',
+  },
+  ratingStars: { flexDirection: 'row', gap: 3 },
+  ratingScoreRow: { flexDirection: 'row', alignItems: 'baseline' },
+  ratingScoreNumber: { fontSize: 32, fontWeight: '800', color: STAR_COLOR },
+  ratingScoreMax: { fontSize: 15, color: colors.textMuted, fontWeight: '500' },
+  ratingCount: { fontSize: 13, color: colors.textSecondary, fontWeight: '600' },
 
   pickupRow: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 8,
@@ -720,33 +727,9 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   actionBtnDisabled: { opacity: 0.5 },
   actionBtnWishlisted: { borderColor: colors.dangerSoft, backgroundColor: colors.dangerBg },
 
-  // Impact Score card
-  impactCard: {
-    backgroundColor: colors.card,
-    borderRadius: 16, borderWidth: 1, borderColor: 'rgba(34,197,94,0.25)',
-    padding: 16, gap: 10,
-  },
-  impactHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  impactIconRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  impactLabel: { fontSize: 13, fontWeight: '600', color: colors.textMuted, letterSpacing: 0.3 },
-  impactTierBadge: {
-    backgroundColor: 'rgba(34,197,94,0.15)',
-    paddingHorizontal: 10, paddingVertical: 3,
-    borderRadius: 20, borderWidth: 1, borderColor: 'rgba(34,197,94,0.3)',
-  },
-  impactTierText: { color: '#22c55e', fontSize: 12, fontWeight: '700' },
-  impactScoreRow: { flexDirection: 'row', alignItems: 'baseline' },
-  impactScoreNumber: { fontSize: 36, fontWeight: '800', color: '#22c55e' },
-  impactScoreMax: { fontSize: 16, color: colors.textMuted, fontWeight: '500' },
-  impactBarTrack: {
-    height: 6, borderRadius: 3,
-    backgroundColor: colors.cardAlt, overflow: 'hidden',
-  },
-  impactBarFill: {
-    height: 6, borderRadius: 3,
-    backgroundColor: '#22c55e',
-  },
-  impactCo2: { fontSize: 12, color: colors.textMuted, lineHeight: 16 },
+  // Impact Score — deliberately minimal, ratings are the dominant trust signal now
+  impactRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  impactRowText: { fontSize: 12, color: colors.textFaint },
 
   // Modal
   modalContainer: { flex: 1, backgroundColor: colors.bg },

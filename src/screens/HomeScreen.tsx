@@ -267,12 +267,15 @@ export default function HomeScreen({ navigation }: Props) {
 // Real item categories (single source of truth: constants/categories.ts)
 // first, then a few broader interest-tag-only filters that aren't real
 // item categories (matched against items.tags instead — see get_feed).
+// "Other" is pulled out and appended last so it stays the rightmost chip
+// rather than landing before the interest-only tags.
 const CATEGORIES: { key: string; label: string }[] = [
-  ...CATEGORY_FILTER_CHIPS,
+  ...CATEGORY_FILTER_CHIPS.filter(c => c.key !== 'other'),
   { key: 'biking',  label: 'Biking'  },
   { key: 'cooking', label: 'Cooking' },
   { key: 'art',     label: 'Art'     },
   { key: 'film',    label: 'Film'    },
+  ...CATEGORY_FILTER_CHIPS.filter(c => c.key === 'other'),
 ];
 
 function CategoryBar({
