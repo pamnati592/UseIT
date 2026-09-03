@@ -215,6 +215,21 @@ export const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   modalSecondaryBtnText: { color: colors.primary, fontSize: 14, fontWeight: '600' },
   modalCancelLink: { alignItems: 'center', paddingVertical: 4 },
   modalCancelLinkText: { color: colors.textFaint, fontSize: 14 },
+
+  // Price confirmation modal
+  priceRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  priceRowLabelWithInfo: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  priceRowLabel: { fontSize: 14, color: colors.textSecondary },
+  priceRowValue: { fontSize: 14, color: colors.text, fontWeight: '600' },
+  priceRowTotal: {
+    borderTopWidth: 1, borderTopColor: colors.border,
+    marginTop: 4, paddingTop: 12,
+  },
+  priceRowTotalLabel: { fontSize: 16, color: colors.text, fontWeight: '700' },
+  priceRowTotalValue: { fontSize: 16, color: colors.text, fontWeight: '800' },
   declineInput: {
     borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
     fontSize: 14, minHeight: 72, textAlignVertical: 'top',

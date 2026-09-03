@@ -6,6 +6,7 @@ import QRScanScreen from '../screens/QRScanScreen';
 import MeetingPointScreen from '../screens/MeetingPointScreen';
 import RatingScreen from '../screens/RatingScreen';
 import SupportThreadScreen from '../screens/SupportThreadScreen';
+import RentalGuideScreen from '../screens/RentalGuideScreen';
 import type { QrPhase } from '../screens/qrShared';
 
 export type ChatsStackParamList = {
@@ -22,6 +23,7 @@ export type ChatsStackParamList = {
   MeetingPoint: { pickupLocation: string | null; itemTitle: string };
   Rating: { transactionId: string; itemTitle: string; otherName: string; isRenter: boolean };
   SupportThread: { threadId: string; title: string };
+  RentalGuide: undefined;
 };
 
 const Stack = createNativeStackNavigator<ChatsStackParamList>();
@@ -40,6 +42,7 @@ export default function ChatsStackNavigator() {
       <Stack.Screen name="MeetingPoint" component={MeetingPointScreen} options={{ animation: 'slide_from_bottom' }} />
       <Stack.Screen name="Rating" component={RatingScreen} options={{ animation: 'slide_from_bottom' }} />
       <Stack.Screen name="SupportThread" component={SupportThreadScreen} options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="RentalGuide" component={RentalGuideScreen} options={{ animation: 'slide_from_right' }} />
     </Stack.Navigator>
   );
 }

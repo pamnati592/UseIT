@@ -5,6 +5,7 @@ export const ITEM_IMAGES_BUCKET = 'item-images';        // public — item galle
 export const HANDOFF_EVIDENCE_BUCKET = 'handoff-evidence'; // private — condition & dispute photos
 export const VERIFICATION_PHOTOS_BUCKET = 'verification-photos'; // private — admin-only (spec 4.7)
 export const CHAT_MEDIA_BUCKET = 'chat-media'; // private — chat photo/voice attachments
+export const SUPPORT_MEDIA_BUCKET = 'support-media'; // private — photos attached in a UseIT support thread
 
 // base64 → Uint8Array. fetch() and XHR both hand back 0-byte blobs for Expo file
 // URIs on iOS, so the SDK is fed raw bytes instead. This was independently
@@ -75,9 +76,9 @@ export function handoffPhotoPath(transactionId: string, phase: 'pickup' | 'retur
   return `${transactionId}/${phase}-${Date.now()}`;
 }
 
-/** Same, for the photo attached to a dispute. */
-export function disputePhotoPath(transactionId: string): string {
-  return `${transactionId}/dispute-${Date.now()}`;
+/** Same idea, for a photo attached in a UseIT support thread — first segment must be the thread id. */
+export function supportMediaPath(threadId: string): string {
+  return `${threadId}/photo-${Date.now()}`;
 }
 
 /** Same idea, for a chat photo/voice/video attachment — first segment must be the conversation id. */

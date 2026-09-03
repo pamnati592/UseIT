@@ -36,7 +36,6 @@ Built as a cross-platform mobile app (iOS + Android) using React Native and Expo
 | 📷 | **QR Transfer Verification** | Unique QR per transaction, GPS-proximity checked, scanned on pickup and return |
 | ⭐ | **Reputation & Trust Score** | Separate lender/renter ratings and written reviews feed a trust tier that discounts platform fees |
 | 🛡️ | **Trust & Safety Console** | Admin dispute resolution, user reports, listing moderation, and an overdue-rentals queue |
-| 🔒 | **Biometric Security Gate** | Face ID / Touch ID required before listing an item or committing to a rental |
 | ❤️ | **Wishlist** | Save items and come back to them later |
 | 🗓️ | **Availability Calendar** | Request specific dates; conflicts are blocked automatically |
 | 🛡️ | **Verified Listings** | Items go through a verification flow before going live |
@@ -108,6 +107,8 @@ npx expo run:ios      # or: npx expo run:android
 ```
 
 That builds and installs a dev client on a simulator/emulator or a connected device. On a free Apple developer account, an on-device build's signature expires after 7 days — re-run `npx expo run:ios --device` to refresh it.
+
+> **iOS on a free Apple Developer account:** the Sign-in-with-Apple entitlement this app requests can't be signed by a free/personal team, and Expo's config plugin re-adds it on every prebuild — a first `npx expo run:ios` will fail to build until it's stripped. Android has no equivalent issue. See `DEV_SETUP.md` for the full iOS build recipe.
 
 ---
 

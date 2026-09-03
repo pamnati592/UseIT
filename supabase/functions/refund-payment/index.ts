@@ -76,7 +76,14 @@ serve(async (req) => {
       }
     }
 
-    if (tx.status !== 'cancelled') {
+    // admin_dispute_resolved can land on 'completed' rather than 'cancelled'
+    // when the dispute was opened after the rental had already completed —
+    // admin_resolve_dispute preserves that instead of wrongly marking a
+    // rental that genuinely happened as cancelled. The other two reasons
+    // (lender_cancelled, declined_at_pickup) always transition through
+    // 'cancelled', so they're unaffected.
+    const acceptableStatuses = reason === 'admin_dispute_resolved' ? ['cancelled', 'completed'] : ['cancelled'];
+    if (!acceptableStatuses.includes(tx.status)) {
       return new Response(JSON.stringify({ error: 'Transaction must already be cancelled before refunding' }), { status: 400, headers: corsHeaders });
     }
     if (!tx.stripe_payment_intent_id) {

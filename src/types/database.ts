@@ -768,6 +768,8 @@ export type Database = {
           content: string
           created_at: string
           id: string
+          media_path: string | null
+          message_type: string
           sender_id: string
           thread_id: string
         }
@@ -775,6 +777,8 @@ export type Database = {
           content: string
           created_at?: string
           id?: string
+          media_path?: string | null
+          message_type?: string
           sender_id: string
           thread_id: string
         }
@@ -782,6 +786,8 @@ export type Database = {
           content?: string
           created_at?: string
           id?: string
+          media_path?: string | null
+          message_type?: string
           sender_id?: string
           thread_id?: string
         }
@@ -863,6 +869,7 @@ export type Database = {
           pickup_lender_ok: boolean
           pickup_photo_url: string | null
           pickup_renter_ok: boolean
+          pre_dispute_status: string | null
           qr_token: string | null
           renter_id: string
           return_lender_ok: boolean
@@ -887,6 +894,7 @@ export type Database = {
           pickup_lender_ok?: boolean
           pickup_photo_url?: string | null
           pickup_renter_ok?: boolean
+          pre_dispute_status?: string | null
           qr_token?: string | null
           renter_id: string
           return_lender_ok?: boolean
@@ -911,6 +919,7 @@ export type Database = {
           pickup_lender_ok?: boolean
           pickup_photo_url?: string | null
           pickup_renter_ok?: boolean
+          pre_dispute_status?: string | null
           qr_token?: string | null
           renter_id?: string
           return_lender_ok?: boolean
@@ -1250,6 +1259,31 @@ export type Database = {
           reporter_name: string
         }[]
       }
+      admin_list_support_overview: {
+        Args: never
+        Returns: {
+          dispute_id: string
+          end_date: string
+          has_dispute: boolean
+          item_photo: string
+          item_title: string
+          last_activity_at: string
+          lender_id: string
+          lender_is_admin: boolean
+          lender_name: string
+          lender_thread_id: string
+          lender_unread: boolean
+          pre_dispute_status: string
+          renter_id: string
+          renter_is_admin: boolean
+          renter_name: string
+          renter_thread_id: string
+          renter_unread: boolean
+          start_date: string
+          status: string
+          transaction_id: string
+        }[]
+      }
       admin_list_support_threads: {
         Args: never
         Returns: {
@@ -1551,10 +1585,6 @@ export type Database = {
         Returns: undefined
       }
       reject_purchase: { Args: { p_purchase: string }; Returns: undefined }
-      report_issue: {
-        Args: { p_description?: string; p_photo_url?: string; p_tx: string }
-        Returns: string
-      }
       report_user:
         | {
             Args: {
@@ -2223,12 +2253,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2252,11 +2282,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2277,11 +2307,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2302,11 +2332,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2319,11 +2349,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

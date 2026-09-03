@@ -12,13 +12,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Spec 4.12's Trust Score fee tiers, finally actually applied here — until
-// now lender_score/renter_score computed and displayed a discount that was
-// never charged. BASE_FEE_PERCENT is a placeholder: the spec says the fee
-// is "dynamically reduced" but never states a base rate, so this is a
-// deliberate guess (5% per side, so 10% combined at zero discount) worth
-// revisiting with real business input before this goes live for money.
-const BASE_FEE_PERCENT = 5;
+// Spec 4.12's Trust Score fee tiers, applied on top of the team's decided
+// base platform fee: 20% combined at zero discount, split unevenly between
+// the two sides (12% lender / 8% renter) rather than an even split.
+const LENDER_BASE_FEE_PERCENT = 12;
+const RENTER_BASE_FEE_PERCENT = 8;
 
 function feeDiscountFor(score: number): number {
   if (score >= 4.5) return 0.30;
@@ -118,8 +116,8 @@ serve(async (req) => {
 
       const renterDiscount = feeDiscountFor(renterProfile?.renter_score ?? 0);
       const lenderDiscount = feeDiscountFor(lenderProfile.lender_score ?? 0);
-      const renterFeePercent = BASE_FEE_PERCENT * (1 - renterDiscount);
-      const lenderFeePercent = BASE_FEE_PERCENT * (1 - lenderDiscount);
+      const renterFeePercent = RENTER_BASE_FEE_PERCENT * (1 - renterDiscount);
+      const lenderFeePercent = LENDER_BASE_FEE_PERCENT * (1 - lenderDiscount);
 
       const basePriceAgorot = Math.round(tx.total_price * 100);
       const renterFeeAgorot = Math.round(basePriceAgorot * renterFeePercent / 100);

@@ -1,15 +1,17 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity,
+  View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, Image,
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert, type ListRenderItemInfo,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import type { ParamListBase } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ChevronLeft, ArrowUp, ShieldCheck, Scale } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { ChevronLeft, ArrowUp, ShieldCheck, Scale, Camera } from 'lucide-react-native';
 import { supabase } from '../services/supabase';
 import { chatBus } from '../services/chatBus';
+import { uploadImage, signedUrlFor, SUPPORT_MEDIA_BUCKET, supportMediaPath } from '../services/storage';
 import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 
@@ -33,7 +35,11 @@ type SupportMessage = {
   sender_id: string;
   content: string;
   created_at: string;
+  message_type: 'text' | 'image';
+  media_path: string | null;
 };
+
+const SUPPORT_MESSAGE_SELECT = 'id, sender_id, content, created_at, message_type, media_path, sender:profiles!support_messages_sender_id_fkey(full_name)';
 
 export default function SupportThreadScreen({ navigation, route }: Props) {
   const { threadId, title } = route.params;
@@ -49,6 +55,8 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
   const [openingDispute, setOpeningDispute] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [sendingPhoto, setSendingPhoto] = useState(false);
+  const [mediaUrls, setMediaUrls] = useState<Record<string, string>>({});
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const isFocused = useIsFocused();
   const isFocusedRef = useRef(isFocused);
@@ -92,7 +100,7 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
         supabase.from('support_threads').select('user_id, transaction_id').eq('id', threadId).single(),
         supabase
           .from('support_messages')
-          .select('id, sender_id, content, created_at, sender:profiles!support_messages_sender_id_fkey(full_name)')
+          .select(SUPPORT_MESSAGE_SELECT)
           .eq('thread_id', threadId)
           .order('created_at', { ascending: false }),
       ]);
@@ -105,7 +113,10 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
         isAdminViewerRef.current = thread.user_id !== user.id;
       }
       const rows = (data as any[]) ?? [];
-      setMessages(rows.map(r => ({ id: r.id, sender_id: r.sender_id, content: r.content, created_at: r.created_at })));
+      setMessages(rows.map(r => ({
+        id: r.id, sender_id: r.sender_id, content: r.content, created_at: r.created_at,
+        message_type: r.message_type ?? 'text', media_path: r.media_path ?? null,
+      })));
       setSenderNames(prev => {
         const next = { ...prev };
         rows.forEach(r => { next[r.sender_id] = r.sender?.full_name ?? 'Unknown'; });
@@ -160,35 +171,84 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
     const { data, error } = await supabase
       .from('support_messages')
       .insert({ thread_id: threadId, sender_id: currentUserId, content })
-      .select('id, sender_id, content, created_at')
+      .select('id, sender_id, content, created_at, message_type, media_path')
       .single();
     if (!error && data) {
       setMessages(prev => prev.some(m => m.id === (data as SupportMessage).id) ? prev : [data as SupportMessage, ...prev]);
-
-      const now = new Date().toISOString();
-      const isOwner = threadUserId === currentUserId;
-      await supabase.from('support_threads').update({
-        last_message: content,
-        last_message_at: now,
-        ...(isOwner ? { user_last_read_at: now } : { admin_last_read_at: now }),
-      }).eq('id', threadId);
-      chatBus.notify();
+      await touchThreadLastMessage(content);
     }
     setSending(false);
   }
 
+  async function touchThreadLastMessage(preview: string) {
+    const now = new Date().toISOString();
+    const isOwner = threadUserId === currentUserId;
+    await supabase.from('support_threads').update({
+      last_message: preview,
+      last_message_at: now,
+      ...(isOwner ? { user_last_read_at: now } : { admin_last_read_at: now }),
+    }).eq('id', threadId);
+    chatBus.notify();
+  }
+
+  async function sendPhoto() {
+    if (!currentUserId || sendingPhoto) return;
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') { Alert.alert('Camera needed', 'Allow camera access to attach a photo.'); return; }
+    const r = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.7, base64: true });
+    if (r.canceled || !r.assets[0]?.base64) return;
+    setSendingPhoto(true);
+    try {
+      const path = await uploadImage(
+        SUPPORT_MEDIA_BUCKET,
+        supportMediaPath(threadId),
+        { base64: r.assets[0].base64, mimeType: r.assets[0].mimeType ?? 'image/jpeg' },
+      );
+      const content = '📷 Photo';
+      const { data, error } = await supabase
+        .from('support_messages')
+        .insert({ thread_id: threadId, sender_id: currentUserId, content, message_type: 'image', media_path: path })
+        .select('id, sender_id, content, created_at, message_type, media_path')
+        .single();
+      if (error) throw error;
+      setMessages(prev => prev.some(m => m.id === (data as SupportMessage).id) ? prev : [data as SupportMessage, ...prev]);
+      await touchThreadLastMessage(content);
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Could not send photo.');
+    } finally {
+      setSendingPhoto(false);
+    }
+  }
+
+  // Private bucket — mint a short-lived signed URL per image message rather
+  // than storing/displaying a raw path, same convention as handoff-evidence.
+  useEffect(() => {
+    const toResolve = messages.filter(m => m.message_type === 'image' && m.media_path && !mediaUrls[m.id]);
+    if (toResolve.length === 0) return;
+    let active = true;
+    Promise.all(toResolve.map(async m => [m.id, await signedUrlFor(SUPPORT_MEDIA_BUCKET, m.media_path!)] as const))
+      .then(pairs => {
+        if (!active) return;
+        setMediaUrls(prev => {
+          const next = { ...prev };
+          pairs.forEach(([id, url]) => { if (url) next[id] = url; });
+          return next;
+        });
+      });
+    return () => { active = false; };
+  }, [messages, mediaUrls]);
+
   // Covers the case a user contacted UseIT without going through their own
-  // "Report a Problem" flow — the admin, reading the conversation, is the
-  // one who decides it needs formal dispute review. Reuses the exact same
-  // effect as a party's own report_issue (transaction -> disputed, a row in
-  // disputes), just admin-gated with the reporter named explicitly, since
-  // the admin isn't a party. Once open, the transaction shows up in the
-  // normal Dispute Queue (SAS — no separate admin-only dispute view).
+  // Get Help flow — the admin, reading the conversation, is the one who
+  // decides it needs formal dispute review. This is the ONLY path that
+  // creates a dispute now (report_issue was dropped) — admin-gated, with the
+  // reporter named explicitly since the admin isn't a party. Once open, the
+  // rental shows up under "Disputed" in AdminRentalsScreen.
   function confirmOpenDispute() {
     if (!threadTransactionId || !threadUserId || openingDispute || disputeOpened) return;
     Alert.alert(
       'Open a dispute?',
-      'This moves the rental to Disputed and adds it to the Dispute Queue, on this user\'s behalf.',
+      'This moves the rental to Disputed and adds it to the Rentals list under Disputed, on this user\'s behalf.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -201,7 +261,7 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
             setOpeningDispute(false);
             if (error) { Alert.alert('Could not open dispute', error.message); return; }
             setDisputeOpened(true);
-            navigation.navigate('AdminDisputes');
+            navigation.navigate('AdminRentalDetail', { transactionId: threadTransactionId });
           },
         },
       ]
@@ -222,9 +282,15 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
     return (
       <View style={[styles.bubbleWrapper, isMe ? styles.bubbleWrapperMe : styles.bubbleWrapperThem]}>
         {showName && <Text style={styles.senderName}>{senderNames[msg.sender_id] ?? '…'}</Text>}
-        <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
-          <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>{msg.content}</Text>
-        </View>
+        {msg.message_type === 'image' ? (
+          mediaUrls[msg.id]
+            ? <Image source={{ uri: mediaUrls[msg.id] }} style={styles.photoBubble} resizeMode="cover" />
+            : <View style={[styles.photoBubble, styles.photoBubbleLoading]}><ActivityIndicator color={colors.textMuted} size="small" /></View>
+        ) : (
+          <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
+            <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : styles.bubbleTextThem]}>{msg.content}</Text>
+          </View>
+        )}
         <Text style={styles.bubbleTime}>{formatTime(msg.created_at)}</Text>
       </View>
     );
@@ -277,6 +343,9 @@ export default function SupportThreadScreen({ navigation, route }: Props) {
         )}
 
         <View style={styles.inputRow}>
+          <TouchableOpacity style={styles.attachBtn} onPress={sendPhoto} disabled={sendingPhoto}>
+            {sendingPhoto ? <ActivityIndicator color={colors.textMuted} size="small" /> : <Camera size={20} color={colors.textMuted} />}
+          </TouchableOpacity>
           <TextInput
             style={[styles.input, { color: colors.text, backgroundColor: colors.card, borderColor: colors.border }]}
             placeholder="Message support…"
@@ -329,11 +398,14 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   bubbleTextMe: { color: colors.btnText },
   bubbleTextThem: { color: colors.text },
   bubbleTime: { fontSize: 10, color: colors.textFaint, marginTop: 2 },
+  photoBubble: { width: 200, height: 200, borderRadius: 14 },
+  photoBubbleLoading: { backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
   inputRow: {
     flexDirection: 'row', alignItems: 'flex-end', gap: 8,
     paddingHorizontal: 12, paddingVertical: 10,
     borderTopWidth: 1, borderTopColor: colors.border,
   },
+  attachBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   input: {
     flex: 1, borderWidth: 1, borderRadius: 18,
     paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, maxHeight: 100,

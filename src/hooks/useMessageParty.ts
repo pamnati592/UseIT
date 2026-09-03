@@ -4,10 +4,10 @@ import type { NavigationProp } from '@react-navigation/native';
 import { supabase } from '../services/supabase';
 import type { ProfileStackParamList } from '../navigation/ProfileStackNavigator';
 
-// AdminOverdueScreen and AdminDisputesScreen both open an
+// AdminOverdueScreen and AdminRentalDetailScreen both open an
 // admin_ensure_support_thread conversation with one party of a transaction —
-// identical logic, only the title suffix ("Overdue Rental" vs "Dispute
-// Support") differed between the two copies.
+// identical logic, only the title suffix ("Overdue Rental" vs "Support")
+// differs between the two call sites.
 export function useMessageParty(navigation: NavigationProp<ProfileStackParamList>, titleSuffix: string) {
   return useCallback(
     async (transactionId: string, userId: string, label: string) => {

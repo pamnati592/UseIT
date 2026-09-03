@@ -30,6 +30,9 @@ yarn-error.*
 .DS_Store
 *.pem
 
+# MS Office lock files
+~$*
+
 # local env files
 .env*.local
 
@@ -45,3 +48,6 @@ yarn-error.*
 # Supabase CLI local state
 supabase/.temp/
 /SwipeAndRent
+
+# Internal exhibition prep — not for the public repo
+exhibition-day/

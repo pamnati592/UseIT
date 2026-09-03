@@ -18,7 +18,7 @@ import { formatPrice } from '../utils/format';
 import { chatBus } from '../services/chatBus';
 import { insertSystemMessage as sharedInsertSystemMessage } from '../services/chatMessages';
 import {
-  uploadImage, uploadAudio, uploadVideo, signedUrlFor, HANDOFF_EVIDENCE_BUCKET, CHAT_MEDIA_BUCKET, disputePhotoPath, chatMediaPath,
+  uploadImage, uploadAudio, uploadVideo, signedUrlFor, CHAT_MEDIA_BUCKET, chatMediaPath,
 } from '../services/storage';
 import { useTheme } from '../theme/ThemeContext';
 import { useAdminMode } from '../contexts/AdminModeContext';
@@ -28,7 +28,7 @@ import { VoiceMessageBubble } from '../components/VoiceMessageBubble';
 import { VideoMessageBubble } from '../components/VideoMessageBubble';
 import {
   Check, X, CreditCard, Clock, ChevronLeft, Package, Calendar, MessageCircle, ClipboardList, ArrowUp,
-  ScanLine, QrCode, CircleCheck, TriangleAlert, MapPin, MessageSquare, Scale, UserRound, ShoppingCart, Camera,
+  ScanLine, QrCode, CircleCheck, TriangleAlert, MapPin, MessageSquare, UserRound, ShoppingCart, Camera,
   ShieldCheck, Info, Flag, Mic, Images, Video,
 } from 'lucide-react-native';
 import { makeStyles } from './ChatRoomScreen.styles';
@@ -78,13 +78,14 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   const [purchases, setPurchases] = useState<Record<string, Purchase>>({});
   const [actionLoading, setActionLoading] = useState(false);
   const [payLoading, setPayLoading] = useState(false);
-  const [disputeModal, setDisputeModal] = useState<{ visible: boolean; transactionId: string | null; step: 1 | 2 | 3 }>({ visible: false, transactionId: null, step: 1 });
-  const [disputeSubmitting, setDisputeSubmitting] = useState(false);
-  const [disputePhotoAsset, setDisputePhotoAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
-  const disputePhotoUri = disputePhotoAsset?.uri ?? null;
-  const [disputeText, setDisputeText] = useState('');
+  const [disputeModal, setDisputeModal] = useState<{ visible: boolean; transactionId: string | null }>({ visible: false, transactionId: null });
   const [declineModal, setDeclineModal] = useState<{ visible: boolean; transactionId: string | null }>({ visible: false, transactionId: null });
   const [declineReason, setDeclineReason] = useState('');
+  const [priceModal, setPriceModal] = useState<{
+    visible: boolean;
+    feeBreakdown: { base_price: number; renter_fee: number; renter_fee_percent: number } | null;
+    resolve: ((confirmed: boolean) => void) | null;
+  }>({ visible: false, feeBreakdown: null, resolve: null });
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const flatListRef = useRef<FlatList<FeedRow>>(null);
@@ -769,9 +770,7 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
   }
 
   function handleReportIssue(transactionId: string) {
-    setDisputePhotoAsset(null);
-    setDisputeText('');
-    setDisputeModal({ visible: true, transactionId, step: 1 });
+    setDisputeModal({ visible: true, transactionId });
   }
 
   // QRDisplayScreen and QRScanScreen's return flow both route here rather than
@@ -850,45 +849,6 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
     }
   }
 
-  async function confirmDispute() {
-    // Uploading the photo takes long enough to tap Submit twice — guard against a
-    // duplicate dispute row from a double-tap, the same bug fixed for QR handoffs.
-    if (disputeSubmitting) return;
-    const transactionId = disputeModal.transactionId;
-    if (!transactionId) return;
-    setDisputeSubmitting(true);
-    try {
-      let photoPath: string | null = null;
-      if (disputePhotoAsset?.base64) {
-        photoPath = await uploadImage(
-          HANDOFF_EVIDENCE_BUCKET,
-          disputePhotoPath(transactionId),
-          { base64: disputePhotoAsset.base64, mimeType: disputePhotoAsset.mimeType ?? 'image/jpeg' },
-        );
-      }
-      const { error } = await supabase.rpc('report_issue', {
-        p_tx: transactionId,
-        p_description: disputeText.trim() || undefined,
-        p_photo_url: photoPath ?? undefined,
-      });
-      if (error) throw error;
-
-      setDisputeModal({ visible: false, transactionId: null, step: 1 });
-      setTransactions(prev => ({ ...prev, [transactionId]: { ...prev[transactionId], status: 'disputed' } }));
-      const tx = transactions[transactionId];
-      const dateRef = tx ? ` (${formatDateRange(tx)})` : '';
-      await insertSystemMessage(
-        `⚠️ An issue was escalated to UseIT Arbitration${dateRef}. Both parties have agreed to accept the platform's binding decision. Funds are held in escrow pending review.`,
-        transactionId,
-        '⚠️ Issue escalated · Under review',
-      );
-    } catch (e: any) {
-      Alert.alert('Error', e.message ?? 'Could not submit dispute.');
-    } finally {
-      setDisputeSubmitting(false);
-    }
-  }
-
   async function handleMessageSupport(transactionId: string) {
     try {
       const { data: threadId, error } = await supabase.rpc('ensure_support_thread', { p_transaction_id: transactionId });
@@ -933,8 +893,22 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
           body: JSON.stringify({ transaction_id: transactionId }),
         }
       );
-      const { client_secret, customer_id, ephemeral_key, error: fnError } = await res.json();
+      const { client_secret, customer_id, ephemeral_key, fee_breakdown, error: fnError } = await res.json();
       if (fnError) throw new Error(fnError);
+
+      // Spec 4.10.6: full price breakdown shown before payment is approved.
+      // A second, separate confirmation from the card-saving one above — that
+      // one is a standing disclosure, this one is the actual price the renter
+      // is agreeing to pay for this specific rental. A real Modal rather than
+      // Alert.alert because the fee line needs a tappable info icon explaining
+      // the trust-score discount — Alert only renders plain text.
+      if (fee_breakdown) {
+        const priceConfirmed = await new Promise<boolean>((resolve) => {
+          setPriceModal({ visible: true, feeBreakdown: fee_breakdown, resolve });
+        });
+        setPriceModal({ visible: false, feeBreakdown: null, resolve: null });
+        if (!priceConfirmed) return;
+      }
 
       // Initialise the payment sheet with the client secret. Passing customer +
       // ephemeral key lets the sheet offer "save this card" and show it saved on
@@ -1473,13 +1447,9 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
               {tx.status === 'cancelled' && !disputeResolutions[tx.id] && (
                 <Text style={styles.helperText}>⚠️ This rental was cancelled — refund processed per policy.</Text>
               )}
+              {/* Available at every stage of the rental, not just paid-onward — a user
+                  shouldn't need to reach a particular status before they can reach UseIT. */}
               {!isAdmin && (
-                tx.status === 'paid'
-                || tx.status === 'active'
-                || tx.status === 'disputed'
-                || !!disputeResolutions[tx.id]
-                || (adminCharges[tx.id]?.length ?? 0) > 0
-              ) && (
                 <TouchableOpacity style={styles.messageSupportBtn} onPress={() => handleReportIssue(tx.id)}>
                   <ShieldCheck size={14} color={colors.primary} />
                   <Text style={styles.messageSupportBtnText}>Get Help</Text>
@@ -1668,154 +1638,67 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
         )}
       </KeyboardAvoidingView>
 
-      {/* Dispute Modal — the one canonical "report an issue" screen (SAS). QRDisplayScreen
-          and QRScanScreen's return flow both route here via reportIssueTransactionId
-          rather than collecting evidence themselves. */}
+      {/* Get Help sheet — the one canonical entry point into a UseIT support
+          conversation (SAS). QRDisplayScreen and QRScanScreen's return flow
+          both route here via reportIssueTransactionId rather than collecting
+          evidence themselves. There is no separate "report a problem" form
+          here on purpose — a user never needs to know a "dispute" exists as
+          a concept; they just message UseIT like they would message anyone
+          else, photo and all, from inside the real chat screen. Only an
+          admin can turn that into a formal dispute (SupportThreadScreen's
+          "Open a dispute" button). */}
       <Modal
         visible={disputeModal.visible}
         transparent
         animationType="slide"
         onRequestClose={() => setDisputeModal(prev => ({ ...prev, visible: false }))}
       >
-        {/* Step 3 has a multiline description field — without keyboard handling the
-            sheet sits under the keyboard with no way to dismiss it. */}
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={[styles.modalSheet, { paddingBottom: 20 + insets.bottom }]}>
-            {disputeModal.step === 1 ? (
-              <>
-                <View style={styles.modalHandle} />
-                <View style={styles.modalIconRow}>
-                  <View style={[styles.modalIconCircle, { backgroundColor: colors.infoBg }]}>
-                    <ShieldCheck size={24} color={colors.primary} />
-                  </View>
-                </View>
-                <Text style={styles.modalTitle}>Get Help</Text>
-                <Text style={styles.modalBody}>
-                  We recommend resolving this directly with {otherUserName} first — most issues get sorted out faster in chat.
-                </Text>
-                <TouchableOpacity
-                  style={styles.modalPrimaryBtn}
-                  onPress={() => {
-                    setDisputeModal(prev => ({ ...prev, visible: false }));
-                    setActiveTab('chat');
-                  }}
-                >
-                  <MessageSquare size={16} color={colors.btnText} />
-                  <Text style={styles.modalPrimaryBtnText}>Back to Chat</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.modalOutlineBtn}
-                  onPress={() => {
-                    const id = disputeModal.transactionId;
-                    setDisputeModal(prev => ({ ...prev, visible: false }));
-                    if (id) handleMessageSupport(id);
-                  }}
-                >
-                  <ShieldCheck size={16} color={colors.primary} />
-                  <Text style={styles.modalOutlineBtnText}>Message UseIT</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.modalSecondaryBtn}
-                  onPress={() => setDisputeModal(prev => ({ ...prev, step: 2 }))}
-                >
-                  <Text style={styles.modalSecondaryBtnText}>Report a Problem →</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setDisputeModal(prev => ({ ...prev, visible: false }))} style={styles.modalCancelLink}>
-                  <Text style={styles.modalCancelLinkText}>Cancel</Text>
-                </TouchableOpacity>
-              </>
-            ) : disputeModal.step === 2 ? (
-              <>
-                <View style={styles.modalHandle} />
-                <View style={styles.modalIconRow}>
-                  <View style={[styles.modalIconCircle, { backgroundColor: colors.dangerBg }]}>
-                    <Scale size={24} color={colors.danger} />
-                  </View>
-                </View>
-                <Text style={styles.modalTitle}>UseIT Arbitration</Text>
-                <View style={styles.arbitrationBox}>
-                  <Text style={styles.arbitrationText}>
-                    &quot;By proceeding, both parties agree to accept UseIT&apos;s binding decision regarding this dispute. The platform will review evidence from both sides and issue a final ruling within 48 hours. Payment remains in escrow until resolved.&quot;
-                  </Text>
-                </View>
-                <Text style={styles.modalBody}>
-                  This action cannot be undone. The dispute will be assigned to a UseIT mediator immediately.
-                </Text>
-                <TouchableOpacity
-                  style={[styles.modalPrimaryBtn, { backgroundColor: colors.danger }]}
-                  onPress={() => setDisputeModal(prev => ({ ...prev, step: 3 }))}
-                >
-                  <Scale size={16} color={colors.white} />
-                  <Text style={[styles.modalPrimaryBtnText, { color: colors.white }]}>I Agree — Continue</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.modalSecondaryBtn}
-                  onPress={() => setDisputeModal(prev => ({ ...prev, step: 1 }))}
-                >
-                  <Text style={styles.modalSecondaryBtnText}>← Go back</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <View style={styles.modalHandle} />
-                <View style={styles.modalIconRow}>
-                  <View style={[styles.modalIconCircle, { backgroundColor: colors.dangerBg }]}>
-                    <Scale size={24} color={colors.danger} />
-                  </View>
-                </View>
-                <Text style={styles.modalTitle}>Document the Issue</Text>
-                <Text style={styles.modalBody}>Describe what&apos;s wrong — this is what the UseIT mediator will review. If something is damaged, a photo makes the case much stronger, but it isn&apos;t required for every kind of issue.</Text>
-
-                {disputePhotoUri ? (
-                  <Image source={{ uri: disputePhotoUri }} style={styles.disputePreview} resizeMode="cover" />
-                ) : (
-                  <TouchableOpacity
-                    style={styles.disputeCameraTile}
-                    onPress={async () => {
-                      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-                      if (status !== 'granted') return;
-                      const r = await ImagePicker.launchCameraAsync({ quality: 0.75, base64: true });
-                      if (!r.canceled && r.assets[0]) setDisputePhotoAsset(r.assets[0]);
-                    }}
-                  >
-                    <Camera size={32} color={colors.textMuted} strokeWidth={1.5} />
-                    <Text style={styles.cameraTileText}>Add a photo (optional) — recommended if something&apos;s damaged</Text>
-                  </TouchableOpacity>
-                )}
-
-                <TextInput
-                  style={[styles.disputeInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
-                  placeholder="Describe what's wrong…"
-                  placeholderTextColor={colors.textMuted}
-                  value={disputeText}
-                  onChangeText={setDisputeText}
-                  multiline
-                  numberOfLines={3}
-                />
-
-                <TouchableOpacity
-                  style={[styles.modalPrimaryBtn, { backgroundColor: colors.danger, opacity: (!disputeText.trim() || disputeSubmitting) ? 0.45 : 1 }]}
-                  onPress={confirmDispute}
-                  disabled={!disputeText.trim() || disputeSubmitting}
-                >
-                  {disputeSubmitting ? (
-                    <ActivityIndicator color={colors.white} />
-                  ) : (
-                    <>
-                      <Scale size={16} color={colors.white} />
-                      <Text style={[styles.modalPrimaryBtnText, { color: colors.white }]}>Submit Report</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.modalSecondaryBtn}
-                  onPress={() => setDisputeModal(prev => ({ ...prev, step: 2 }))}
-                >
-                  <Text style={styles.modalSecondaryBtnText}>← Go back</Text>
-                </TouchableOpacity>
-              </>
-            )}
+            <View style={styles.modalHandle} />
+            <View style={styles.modalIconRow}>
+              <View style={[styles.modalIconCircle, { backgroundColor: colors.infoBg }]}>
+                <ShieldCheck size={24} color={colors.primary} />
+              </View>
+            </View>
+            <Text style={styles.modalTitle}>Get Help</Text>
+            <Text style={styles.modalBody}>
+              We recommend resolving this directly with {otherUserName} first — most issues get sorted out faster in chat.
+            </Text>
+            <TouchableOpacity
+              style={styles.modalPrimaryBtn}
+              onPress={() => {
+                setDisputeModal(prev => ({ ...prev, visible: false }));
+                setActiveTab('chat');
+              }}
+            >
+              <MessageSquare size={16} color={colors.btnText} />
+              <Text style={styles.modalPrimaryBtnText}>Back to Chat</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalOutlineBtn}
+              onPress={() => {
+                const id = disputeModal.transactionId;
+                setDisputeModal(prev => ({ ...prev, visible: false }));
+                if (id) handleMessageSupport(id);
+              }}
+            >
+              <ShieldCheck size={16} color={colors.primary} />
+              <Text style={styles.modalOutlineBtnText}>Message UseIT</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalSecondaryBtn}
+              onPress={() => {
+                setDisputeModal(prev => ({ ...prev, visible: false }));
+                navigation.navigate('RentalGuide');
+              }}
+            >
+              <Text style={styles.modalSecondaryBtnText}>How does renting work? →</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setDisputeModal(prev => ({ ...prev, visible: false }))} style={styles.modalCancelLink}>
+              <Text style={styles.modalCancelLinkText}>Cancel</Text>
+            </TouchableOpacity>
           </View>
           </KeyboardAvoidingView>
         </TouchableWithoutFeedback>
@@ -1883,6 +1766,61 @@ export default function ChatRoomScreen({ navigation, route }: Props) {
             </View>
           </KeyboardAvoidingView>
         </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* ── Price confirmation, before the Stripe sheet opens (spec 4.10.6) ── */}
+      <Modal
+        visible={priceModal.visible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => priceModal.resolve?.(false)}
+      >
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => priceModal.resolve?.(false)}>
+          <TouchableWithoutFeedback>
+            <View style={[styles.modalSheet, { paddingBottom: 20 + insets.bottom }]}>
+              <View style={styles.modalHandle} />
+              <Text style={styles.modalTitle}>Confirm Price</Text>
+
+              {priceModal.feeBreakdown && (
+                <View>
+                  <View style={styles.priceRow}>
+                    <Text style={styles.priceRowLabel}>Rental price</Text>
+                    <Text style={styles.priceRowValue}>₪{priceModal.feeBreakdown.base_price.toFixed(2)}</Text>
+                  </View>
+                  <View style={styles.priceRow}>
+                    <View style={styles.priceRowLabelWithInfo}>
+                      <Text style={styles.priceRowLabel}>
+                        Platform fee ({priceModal.feeBreakdown.renter_fee_percent.toFixed(1)}%)
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => Alert.alert(
+                          'Platform Fee',
+                          'The more trusted your rating is, the bigger your discount — the platform fee shown here is already reduced based on your current renter score.'
+                        )}
+                      >
+                        <Info size={14} color={colors.textMuted} />
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.priceRowValue}>₪{priceModal.feeBreakdown.renter_fee.toFixed(2)}</Text>
+                  </View>
+                  <View style={[styles.priceRow, styles.priceRowTotal]}>
+                    <Text style={styles.priceRowTotalLabel}>Total</Text>
+                    <Text style={styles.priceRowTotalValue}>
+                      ₪{(priceModal.feeBreakdown.base_price + priceModal.feeBreakdown.renter_fee).toFixed(2)}
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              <TouchableOpacity style={styles.modalPrimaryBtn} onPress={() => priceModal.resolve?.(true)}>
+                <Text style={styles.modalPrimaryBtnText}>Continue to Payment</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalCancelLink} onPress={() => priceModal.resolve?.(false)}>
+                <Text style={styles.modalCancelLinkText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableWithoutFeedback>
+        </TouchableOpacity>
       </Modal>
 
       <Modal visible={photoPickerVisible} transparent animationType="slide" onRequestClose={() => setPhotoPickerVisible(false)}>

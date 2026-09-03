@@ -9,11 +9,11 @@ import ItemDetailScreen from '../screens/ItemDetailScreen';
 import PublicProfileScreen from '../screens/PublicProfileScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 import AdminHomeScreen from '../screens/AdminHomeScreen';
-import AdminDisputesScreen from '../screens/AdminDisputesScreen';
+import AdminRentalsScreen from '../screens/AdminRentalsScreen';
+import AdminRentalDetailScreen from '../screens/AdminRentalDetailScreen';
 import AdminItemsScreen from '../screens/AdminItemsScreen';
 import AdminUsersScreen from '../screens/AdminUsersScreen';
 import AdminOverdueScreen from '../screens/AdminOverdueScreen';
-import AdminSupportInboxScreen from '../screens/AdminSupportInboxScreen';
 import AdminReportsScreen from '../screens/AdminReportsScreen';
 import AdminConversationViewScreen from '../screens/AdminConversationViewScreen';
 import SupportThreadScreen from '../screens/SupportThreadScreen';
@@ -36,11 +36,11 @@ export type ProfileStackParamList = {
   PublicProfile: { userId: string; userName: string; approveTransactionId?: string; requestSummary?: string; conversationId?: string; itemTitle?: string; autoOpenReport?: boolean; reportContextItemId?: string };
   History: undefined;
   AdminHome: undefined;
-  AdminDisputes: undefined;
+  AdminRentals: undefined;
+  AdminRentalDetail: { transactionId: string };
   AdminItems: undefined;
   AdminUsers: { initialSearch?: string } | undefined;
   AdminOverdue: undefined;
-  AdminSupportInbox: undefined;
   AdminReports: undefined;
   AdminConversationView: { conversationId: string };
   SupportThread: { threadId: string; title: string };
@@ -64,11 +64,11 @@ export default function ProfileStackNavigator() {
       <Stack.Screen name="PublicProfile" component={PublicProfileScreen as any} options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="History" component={HistoryScreen} options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="AdminHome" component={AdminHomeScreen} options={{ animation: 'slide_from_right' }} />
-      <Stack.Screen name="AdminDisputes" component={AdminDisputesScreen} options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="AdminRentals" component={AdminRentalsScreen} options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="AdminRentalDetail" component={AdminRentalDetailScreen} options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="AdminItems" component={AdminItemsScreen} options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="AdminUsers" component={AdminUsersScreen} options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="AdminOverdue" component={AdminOverdueScreen} options={{ animation: 'slide_from_right' }} />
-      <Stack.Screen name="AdminSupportInbox" component={AdminSupportInboxScreen} options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="AdminReports" component={AdminReportsScreen} options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="AdminConversationView" component={AdminConversationViewScreen} options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="SupportThread" component={SupportThreadScreen as any} options={{ animation: 'slide_from_right' }} />
