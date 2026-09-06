@@ -112,10 +112,14 @@ export default function AdminRentalDetailScreen({ navigation, route }: Props) {
         body: { transaction_id: transactionId, reason: 'admin_dispute_resolved' },
       });
       if (refundError) {
+        // supabase-js's own error.message is just "Edge Function returned a
+        // non-2xx status code" — the function's actual {error: "..."} body
+        // (why it really failed) is only reachable via error.context.
+        const body = await (refundError as any).context?.json?.().catch(() => null);
         await supabase.rpc('admin_reopen_dispute', { p_transaction_id: transactionId });
         Alert.alert(
           'Refund failed — dispute reopened',
-          `The ruling could not be completed (${refundError.message ?? 'refund failed'}). This case has been reopened so you can retry once the issue is fixed.`
+          `The ruling could not be completed (${body?.error ?? refundError.message ?? 'refund failed'}). This case has been reopened so you can retry once the issue is fixed.`
         );
         setResolving(false);
         return;
@@ -125,7 +129,8 @@ export default function AdminRentalDetailScreen({ navigation, route }: Props) {
         body: { transaction_id: transactionId, amount, reason: 'damage' },
       });
       if (chargeError) {
-        Alert.alert('Damage charge failed', chargeError.message ?? 'Could not process the charge.');
+        const body = await (chargeError as any).context?.json?.().catch(() => null);
+        Alert.alert('Damage charge failed', body?.error ?? chargeError.message ?? 'Could not process the charge.');
       } else if (chargeResult && !chargeResult.ok) {
         Alert.alert('Damage charge failed', 'The card on file was declined or missing — the renter has been notified in chat to arrange payment directly.');
       }

@@ -51,3 +51,5 @@ supabase/.temp/
 
 # Internal exhibition prep — not for the public repo
 exhibition-day/
+NEXT_STEP.md
+DEV_SETUP.md
