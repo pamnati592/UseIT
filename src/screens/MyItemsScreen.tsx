@@ -65,6 +65,7 @@ export default function MyItemsScreen({ navigation }: Props) {
         .from('items')
         .select('id, owner_id, title, category, description, daily_price, sale_price, city, photos, pickup_location, verification_status, rejection_reason, is_hidden')
         .eq('owner_id', user.id)
+        .is('archived_at', null)
         .order('created_at', { ascending: false }),
       supabase
         .from('transactions')
@@ -192,7 +193,7 @@ export default function MyItemsScreen({ navigation }: Props) {
                     onPress={() => navigation.navigate('ManageItem', { itemId: item.id, itemTitle: item.title })}
                   >
                     <Calendar size={14} color={colors.textSecondary} />
-                    <Text style={styles.actionBtnText}>Manage</Text>
+                    <Text style={styles.actionBtnText}>Availability</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.actionBtn}

@@ -197,11 +197,48 @@ export default function EditItemScreen({ navigation, route }: Props) {
                 return;
               }
 
+              // Any transaction row — including a long-completed one — still blocks
+              // a hard delete at the database level (transactions_item_id_fkey has
+              // no cascade, deliberately: rental history has to survive the listing
+              // it points to). The check above only catches in-flight rentals, so a
+              // past-but-finished one would otherwise fall through to the raw
+              // Postgres foreign-key error below. Same story for reports_context_
+              // item_id_fkey if this listing was ever reported.
+              const [{ data: anyTx }, { data: anyReport }] = await Promise.all([
+                supabase.from('transactions').select('id').eq('item_id', itemId).limit(1),
+                supabase.from('reports').select('id').eq('context_item_id', itemId).limit(1),
+              ]);
+
+              if ((anyTx && anyTx.length > 0) || (anyReport && anyReport.length > 0)) {
+                // Can't hard-delete without breaking that history, but the owner
+                // still gets a real "remove from my listings" — archive instead.
+                // Distinct from Hide: this is one-way and drops it from
+                // MyItemsScreen entirely, not just from the public feed.
+                const { error: archiveError } = await supabase
+                  .from('items')
+                  .update({ is_hidden: true, archived_at: new Date().toISOString() })
+                  .eq('id', itemId);
+                if (archiveError) throw archiveError;
+
+                Alert.alert(
+                  'Item removed',
+                  "This item had rental or report history, so it's archived rather than erased — it's gone from your listings, but its history stays intact for anyone it's connected to.",
+                  [{ text: 'OK', onPress: () => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MyItems')) }],
+                );
+                return;
+              }
+
               const { error } = await supabase.from('items').delete().eq('id', itemId);
               if (error) throw error;
               navigation.canGoBack() ? navigation.goBack() : navigation.navigate('MyItems');
             } catch (e: any) {
-              Alert.alert('Error', e?.message ?? 'Could not delete item');
+              // Safety net: if some other reference we haven't accounted for still
+              // trips a foreign-key constraint, translate it instead of showing
+              // raw Postgres SQL to the user.
+              const message = /foreign key constraint/i.test(e?.message ?? '')
+                ? "This item can't be deleted because other records still reference it. Use Hide instead to remove it from the feed."
+                : e?.message ?? 'Could not delete item';
+              Alert.alert('Error', message);
             } finally {
               setDeleting(false);
             }

@@ -12,7 +12,10 @@ import { useTheme } from '../theme/ThemeContext';
 import type { ThemeColors } from '../theme/colors';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { OverflowMenu } from '../components/OverflowMenu';
-import { ChevronLeft, ChevronRight, MapPin, Tag, ShoppingCart, Heart, MessageCircle, X, Leaf, Star, Flag } from 'lucide-react-native';
+import {
+  ChevronLeft, ChevronRight, MapPin, Tag, ShoppingCart, Heart, MessageCircle, X, Leaf, Star, Flag,
+  Calendar as CalendarIcon, Pencil, Eye, EyeOff,
+} from 'lucide-react-native';
 import { getImpactScore, formatDateRange, formatPrice } from '../utils/format';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -92,6 +95,11 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
   const [wishlistLoading, setWishlistLoading] = useState(false);
   const [itemRating, setItemRating] = useState<{ avg: number; count: number } | null>(null);
   const [pickupLocation, setPickupLocation] = useState<string | null>(null);
+  const [isHidden, setIsHidden] = useState(false);
+  // Sold is terminal — distinct from is_hidden so the owner can't tap "Show"
+  // on an item that's already gone and accidentally re-list it (same guard
+  // as MyItemsScreen).
+  const [isSold, setIsSold] = useState(false);
 
   const [rentModalVisible, setRentModalVisible] = useState(!!(prefilledStart || openRent));
 
@@ -123,10 +131,19 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
         .eq('item_id', item.id)
         .maybeSingle()
         .then(({ data }) => setWishlisted(!!data));
+      if (user.id === item.owner_id) {
+        supabase
+          .from('purchases')
+          .select('item_id')
+          .eq('item_id', item.id)
+          .eq('status', 'paid')
+          .maybeSingle()
+          .then(({ data }) => setIsSold(!!data));
+      }
     });
     supabase
       .from('items')
-      .select('avg_rating, review_count, pickup_location')
+      .select('avg_rating, review_count, pickup_location, is_hidden')
       .eq('id', item.id)
       .single()
       .then(({ data }) => {
@@ -134,6 +151,7 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
           setItemRating({ avg: (data as any).avg_rating, count: (data as any).review_count });
         }
         if (data) setPickupLocation((data as any).pickup_location ?? null);
+        if (data) setIsHidden((data as any).is_hidden ?? false);
       });
   }, []);
   const [selectedStart, setSelectedStart] = useState<string | null>(prefilledStart ?? null);
@@ -332,6 +350,16 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
     }
   }
 
+  // Same one-line mutation MyItemsScreen's toggleHidden performs — not worth a
+  // shared helper for a single Postgres update, but the semantics must match
+  // exactly (including leaving sold items alone).
+  async function toggleHidden() {
+    const next = !isHidden;
+    const { error } = await supabase.from('items').update({ is_hidden: next }).eq('id', item.id);
+    if (error) { Alert.alert('Error', error.message); return; }
+    setIsHidden(next);
+  }
+
   const markedDates = buildMarkedDates(selectedStart, selectedEnd, blockedDates, colors);
   const totalDays = selectedStart && selectedEnd ? daysBetween(selectedStart, selectedEnd) : null;
   const totalPrice = totalDays ? totalDays * item.daily_price : null;
@@ -354,17 +382,42 @@ export default function ItemDetailScreen({ navigation, route }: Props) {
           {/* Covers listings the AI moderation pass missed — carries the item id
               so the admin sees exactly what was flagged (SAS: same
               PublicProfileScreen report modal, not a separate implementation).
-              Hidden for your own listing. */}
+              Hidden for your own listing.
+              Viewing your own item instead surfaces the same Manage/Edit/Hide
+              shortcuts as MyItemsScreen — navigation shortcuts into the
+              existing ManageItem/EditItem screens (SAS), not reimplemented
+              here. Cross-tab via getParent() since ItemDetail is reachable
+              from both the Home and Profile stacks, but ManageItem/EditItem
+              only exist in the Profile stack. */}
           <OverflowMenu
-            items={ownerName && item.owner_id !== currentUserId ? [
-              {
-                key: 'report', label: 'Report this listing', icon: Flag, destructive: true,
-                onPress: () => (navigation as any).navigate('PublicProfile', {
-                  userId: item.owner_id, userName: ownerName,
-                  autoOpenReport: true, reportContextItemId: item.id,
-                }),
-              },
-            ] : []}
+            items={
+              item.owner_id === currentUserId ? [
+                {
+                  key: 'manage', label: 'Manage Availability', icon: CalendarIcon,
+                  onPress: () => (navigation as any).getParent()?.navigate('Profile', {
+                    screen: 'ManageItem', params: { itemId: item.id, itemTitle: item.title },
+                  }),
+                },
+                {
+                  key: 'edit', label: 'Edit', icon: Pencil,
+                  onPress: () => (navigation as any).getParent()?.navigate('Profile', {
+                    screen: 'EditItem', params: { itemId: item.id },
+                  }),
+                },
+                ...(isSold ? [] : [{
+                  key: 'hide', label: isHidden ? 'Show' : 'Hide', icon: isHidden ? Eye : EyeOff,
+                  onPress: toggleHidden,
+                }]),
+              ] : ownerName ? [
+                {
+                  key: 'report', label: 'Report this listing', icon: Flag, destructive: true,
+                  onPress: () => (navigation as any).navigate('PublicProfile', {
+                    userId: item.owner_id, userName: ownerName,
+                    autoOpenReport: true, reportContextItemId: item.id,
+                  }),
+                },
+              ] : []
+            }
           />
         </View>
 

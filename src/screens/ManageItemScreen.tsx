@@ -264,7 +264,7 @@ export default function ManageItemScreen({ navigation, route }: Props) {
           <ChevronLeft size={28} color={colors.text} />
         </TouchableOpacity>
         <View style={styles.headerText}>
-          <Text style={styles.title}>Manage Item</Text>
+          <Text style={styles.title}>Manage Availability</Text>
           <Text style={styles.subtitle} numberOfLines={1}>{itemTitle}</Text>
         </View>
       </View>

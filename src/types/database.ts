@@ -286,6 +286,7 @@ export type Database = {
       }
       items: {
         Row: {
+          archived_at: string | null
           available_from: string | null
           available_to: string | null
           avg_rating: number | null
@@ -310,6 +311,7 @@ export type Database = {
           verification_status: Database["public"]["Enums"]["item_status"]
         }
         Insert: {
+          archived_at?: string | null
           available_from?: string | null
           available_to?: string | null
           avg_rating?: number | null
@@ -334,6 +336,7 @@ export type Database = {
           verification_status?: Database["public"]["Enums"]["item_status"]
         }
         Update: {
+          archived_at?: string | null
           available_from?: string | null
           available_to?: string | null
           avg_rating?: number | null
